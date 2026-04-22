@@ -8,9 +8,13 @@ import 'session_model.dart';
 import 'stats_model.dart';
 import 'stats_service.dart';
 
+import 'best_stats_model.dart';
+import 'best_stats_service.dart';
+
 class OfflineTrackerController {
   final LocalStorageService _storage = LocalStorageService();
   final SessionHistoryService _historyService = SessionHistoryService();
+  final BestStatsService _bestStatsService = BestStatsService();
 
   ActiveSession session = const ActiveSession(
     isRunning: false,
@@ -27,6 +31,11 @@ class OfflineTrackerController {
   Future<StatsModel> loadStats() async {
     final history = await _historyService.loadHistory();
     return _statsService.calculate(history);
+  }
+
+  Future<BestStatsModel> loadBestStats() async {
+    final history = await _historyService.loadHistory();
+    return _bestStatsService.calculate(history);
   }
 
   Future<void> start() async {

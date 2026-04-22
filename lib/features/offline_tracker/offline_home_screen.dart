@@ -12,6 +12,8 @@ import '../leaderboard/leaderboard_filter.dart';
 import '../leaderboard/leaderboard_service.dart';
 import '../leaderboard/leaderboard_user_model.dart';
 
+import 'best_stats_model.dart';
+
 
 class OfflineHomeScreen extends StatefulWidget {
   const OfflineHomeScreen({super.key});
@@ -36,11 +38,22 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
     monthMinutes: 0,
   );
 
+  BestStatsModel _bestStats = const BestStatsModel(
+    bestDayMinutes: 0,
+    bestWeekMinutes: 0,
+    bestMonthMinutes: 0,
+    streakDays: 0,
+  );
+
   Future<void> _refreshStats() async {
     _stats = await controller.loadStats();
     if (mounted) {
       setState(() {});
     }
+  }
+
+  Future<void> _refreshBestStats() async {
+    _bestStats = await controller.loadBestStats();
   }
 
   Future<void> _refreshRankingPreview() async {
@@ -69,17 +82,85 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
     }
   }
 
+  Widget _buildBestStatsCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Your best',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Best day'),
+                Text(formatMinutes(_bestStats.bestDayMinutes)),
+              ],
+            ),
+            const SizedBox(height: 6),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Best week'),
+                Text(formatMinutes(_bestStats.bestWeekMinutes)),
+              ],
+            ),
+            const SizedBox(height: 6),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Best month'),
+                Text(formatMinutes(_bestStats.bestMonthMinutes)),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                const Icon(Icons.local_fire_department, color: Colors.orange),
+                const SizedBox(width: 6),
+                Text(
+                  'Streak: ${_bestStats.streakDays} days',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildRankingPreviewCard() {
     if (_yourRank == null) {
       return const SizedBox.shrink();
     }
 
-    return Card(
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.blue.shade600,
+            Colors.blue.shade400,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            const Icon(Icons.emoji_events_outlined, size: 28),
+            const Icon(Icons.emoji_events, color: Colors.white, size: 30),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -90,22 +171,23 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'out of $_participantCount participants',
-                    style: TextStyle(
+                    'Out of $_participantCount participants',
+                    style: const TextStyle(
                       fontSize: 13,
-                      color: Colors.grey.shade700,
+                      color: Colors.white70,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  const Text(
                     'This week • Prague',
                     style: TextStyle(
                       fontSize: 13,
-                      color: Colors.grey.shade700,
+                      color: Colors.white70,
                     ),
                   ),
                 ],
@@ -114,8 +196,9 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
             Text(
               formatMinutes(_yourRankMinutes),
               style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
             ),
           ],
@@ -126,26 +209,29 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
 
   Widget _buildStatCard(String title, String value) {
     return Expanded(
-      child: Card(
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(14),
+        ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
           child: Column(
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 value,
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
-                textAlign: TextAlign.center,
               ),
             ],
           ),
@@ -164,6 +250,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
     await controller.init();
     _stats = await controller.loadStats();
     await _refreshRankingPreview();
+    await _refreshBestStats();
 
     _uiTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
@@ -238,7 +325,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              session.isRunning ? 'Tracking running' : 'Tracking stopped',
+              session.isRunning ? 'You are offline 🚀' : 'Start your challenge',
               style: const TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -268,6 +355,9 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
             const SizedBox(height: 16),
             _buildRankingPreviewCard(),
 
+            const SizedBox(height: 16),
+            _buildBestStatsCard(),
+
             const SizedBox(height: 32),
             SizedBox(
               width: double.infinity,
@@ -290,6 +380,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
                   await controller.stop();
                   await _refreshStats();
                   await _refreshRankingPreview();
+                  await _refreshBestStats();
                   setState(() {});
                 }
                     : null,
