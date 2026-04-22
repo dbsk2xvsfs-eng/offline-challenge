@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'features/offline_tracker/offline_home_screen.dart';
 
+import 'main_navigation_screen.dart';
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -13,7 +15,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
         colorSchemeSeed: Colors.blue,
       ),
-      home: const OfflineHomeScreen(),
+      home: const MainNavigationScreen(),
     );
   }
 }
