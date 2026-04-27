@@ -2,9 +2,13 @@ import 'leaderboard_filter.dart';
 import 'leaderboard_user_model.dart';
 
 class LeaderboardService {
-  List<LeaderboardUserModel> loadFakeUsers() {
-    return const [
-      LeaderboardUserModel(
+  List<LeaderboardUserModel> loadFakeUsers({
+    required String yourNickname,
+    required String yourCity,
+    required String yourCountry,
+  }) {
+    return [
+      const LeaderboardUserModel(
         nickname: 'Anna',
         country: 'CZ',
         city: 'Prague',
@@ -14,7 +18,7 @@ class LeaderboardService {
         allMinutes: 12400,
         isYou: false,
       ),
-      LeaderboardUserModel(
+      const LeaderboardUserModel(
         nickname: 'Tom',
         country: 'CZ',
         city: 'Brno',
@@ -24,7 +28,7 @@ class LeaderboardService {
         allMinutes: 11000,
         isYou: false,
       ),
-      LeaderboardUserModel(
+      const LeaderboardUserModel(
         nickname: 'Luca',
         country: 'IT',
         city: 'Milan',
@@ -34,17 +38,20 @@ class LeaderboardService {
         allMinutes: 13200,
         isYou: false,
       ),
+
+      // 👇 TVŮJ UŽIVATEL PODLE PROFILU
       LeaderboardUserModel(
-        nickname: 'You',
-        country: 'CZ',
-        city: 'Prague',
+        nickname: yourNickname,
+        country: yourCountry,
+        city: yourCity,
         dayMinutes: 160,
         weekMinutes: 700,
         monthMinutes: 2800,
         allMinutes: 9800,
         isYou: true,
       ),
-      LeaderboardUserModel(
+
+      const LeaderboardUserModel(
         nickname: 'Emma',
         country: 'DE',
         city: 'Berlin',
@@ -54,7 +61,7 @@ class LeaderboardService {
         allMinutes: 9200,
         isYou: false,
       ),
-      LeaderboardUserModel(
+      const LeaderboardUserModel(
         nickname: 'Sara',
         country: 'CZ',
         city: 'Prague',
@@ -64,7 +71,7 @@ class LeaderboardService {
         allMinutes: 8600,
         isYou: false,
       ),
-      LeaderboardUserModel(
+      const LeaderboardUserModel(
         nickname: 'David',
         country: 'CZ',
         city: 'Ostrava',

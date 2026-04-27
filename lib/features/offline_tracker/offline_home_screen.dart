@@ -15,7 +15,9 @@ import 'package:share_plus/share_plus.dart';
 
 import '../profile/profile_model.dart';
 import '../profile/profile_service.dart';
-
+import 'tracking_settings_service.dart';
+import 'screen_off_tracker_service.dart';
+import 'native_tracking_service.dart';
 
 
 class OfflineHomeScreen extends StatefulWidget {
@@ -25,11 +27,21 @@ class OfflineHomeScreen extends StatefulWidget {
   State<OfflineHomeScreen> createState() => _OfflineHomeScreenState();
 }
 
-class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
+class _OfflineHomeScreenState extends State<OfflineHomeScreen>
+    with WidgetsBindingObserver {
   final controller = OfflineTrackerController();
   final LeaderboardService _leaderboardService = LeaderboardService();
 
+  final NativeTrackingService _nativeTrackingService = NativeTrackingService();
+
   final ProfileService _profileService = ProfileService();
+  final ScreenOffTrackerService _screenOffTrackerService =
+  ScreenOffTrackerService();
+
+  final TrackingSettingsService _trackingSettingsService =
+  TrackingSettingsService();
+
+  bool _trackingEnabled = false;
 
   ProfileModel _profile = const ProfileModel(
     nickname: '',
@@ -77,7 +89,11 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
 
   Future<void> _refreshRankingPreview() async {
     final users = _leaderboardService.filterUsers(
-      users: _leaderboardService.loadFakeUsers(),
+      users: _leaderboardService.loadFakeUsers(
+        yourNickname: _profile.nickname.isEmpty ? 'You' : _profile.nickname,
+        yourCity: _profile.city,
+        yourCountry: _profile.country,
+      ),
       scope: LeaderboardScope.city,
       period: LeaderboardPeriod.week,
       yourCountry: _profile.country,
@@ -102,12 +118,75 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _init();
+  }
+
+  Future<void> _testScreenOff() async {
+    await _screenOffTrackerService.onScreenOff();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Test: screen off started'),
+      ),
+    );
+  }
+
+  Future<void> _testScreenOn() async {
+    final saved = await _screenOffTrackerService.onScreenOn();
+
+    await _refreshStats();
+    await _refreshBestStats();
+    await _refreshRankingPreview();
+
+    if (!mounted) return;
+
+    setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          saved
+              ? 'Test: session saved'
+              : 'Test: session ignored, shorter than 60 min',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startCollecting() async {
+    await _trackingSettingsService.setTrackingEnabled(true);
+    print("STARTING ANDROID SERVICE...");
+    await _nativeTrackingService.startTrackingService();
+
+    if (!mounted) return;
+
+    setState(() {
+      _trackingEnabled = true;
+    });
+  }
+
+  Future<void> _refreshAll() async {
+    await _refreshStats();
+    await _refreshRankingPreview();
+    await _refreshBestStats();
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _init() async {
     await controller.init();
-    await _refreshProfile();
+
+    _trackingEnabled = await _trackingSettingsService.isTrackingEnabled();
+
+    if (_trackingEnabled) {
+      await _nativeTrackingService.startTrackingService();
+    }
+
     await _refreshStats();
     await _refreshRankingPreview();
     await _refreshBestStats();
@@ -331,7 +410,15 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshAll();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _uiTimer?.cancel();
     controller.dispose();
     super.dispose();
@@ -364,6 +451,10 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
         title: const Text('Offline Challenge'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshAll,
+          ),
+          IconButton(
             icon: const Icon(Icons.share_outlined),
             onPressed: () {
               final rankText = _yourRank != null
@@ -373,7 +464,9 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
               final timeText = formatMinutes(_yourRankMinutes);
 
               final message =
-                  'I am $rankText with $timeText offline.\n\nCan you beat me? 🔥\n\nJoin Offline Challenge.';
+                  'I am $rankText with $timeText offline.\n\n'
+                  'Can you beat me? 🔥\n\n'
+                  'Join Offline Challenge.';
 
               Share.share(message);
             },
@@ -393,18 +486,25 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
           child: Column(
             children: [
               Text(
-                session.isRunning
-                    ? 'You are offline 🚀'
-                    : 'Start your challenge',
+                'Offline today',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: titleFont,
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                _trackingEnabled ? 'Tracking automatically' : 'Start tracking',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: isVerySmallPhone ? 11 : 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
               SizedBox(height: sectionSpacing),
               Text(
-                formatMinutes(currentMinutes),
+                formatMinutes(_stats.todayMinutes),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: timerFont,
@@ -454,51 +554,22 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> {
                   style: ElevatedButton.styleFrom(
                     minimumSize: Size.fromHeight(buttonHeight),
                   ),
-                  onPressed: session.isRunning
-                      ? null
-                      : () async {
-                    await controller.start();
-                    setState(() {});
-                  },
-                  child: const Text('START OFFLINE'),
+                  onPressed: _trackingEnabled ? null : _startCollecting,
+                  child: Text(
+                    _trackingEnabled ? 'COLLECTING ENABLED' : 'START COLLECTING',
+                  ),
                 ),
               ),
+
               const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: Size.fromHeight(buttonHeight),
-                  ),
-                  onPressed: session.isRunning
-                      ? () async {
-                    await controller.stop();
-                    await _refreshStats();
-                    await _refreshRankingPreview();
-                    await _refreshBestStats();
-                    setState(() {});
-                  }
-                      : null,
-                  child: const Text('STOP'),
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: Size.fromHeight(
-                      isVerySmallPhone ? 40 : 44,
-                    ),
-                  ),
-                  onPressed: () async {
-                    await controller.reset();
-                    await _refreshStats();
-                    await _refreshRankingPreview();
-                    await _refreshBestStats();
-                    setState(() {});
-                  },
-                  child: const Text('Reset current'),
+              Text(
+                _trackingEnabled
+                    ? 'Offline time will be collected automatically when your screen is off.'
+                    : 'Start once. Then the app will collect screen-off offline time automatically.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: isVerySmallPhone ? 11 : 12,
+                  color: Colors.grey.shade600,
                 ),
               ),
             ],

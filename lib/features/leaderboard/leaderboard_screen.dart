@@ -25,7 +25,11 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   @override
   void initState() {
     super.initState();
-    allUsers = service.loadFakeUsers();
+    allUsers = service.loadFakeUsers(
+      yourNickname: 'You',
+      yourCity: yourCity,
+      yourCountry: yourCountry,
+    );
   }
 
   String formatMinutes(int minutes) {

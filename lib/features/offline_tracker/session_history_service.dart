@@ -9,11 +9,25 @@ class SessionHistoryService {
 
   Future<List<SessionModel>> loadHistory() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+
     final rawList = prefs.getStringList(_historyKey) ?? [];
 
-    return rawList
+    final normalSessions = rawList
         .map((item) => SessionModel.fromJson(jsonDecode(item)))
         .toList();
+
+    final nativeRaw = prefs.getString('native_session_history') ?? '[]';
+    final decodedNative = jsonDecode(nativeRaw) as List;
+
+    final nativeSessions = decodedNative
+        .map((item) => SessionModel.fromJson(item as Map<String, dynamic>))
+        .toList();
+
+    return [
+      ...normalSessions,
+      ...nativeSessions,
+    ];
   }
 
   Future<void> saveHistory(List<SessionModel> sessions) async {
