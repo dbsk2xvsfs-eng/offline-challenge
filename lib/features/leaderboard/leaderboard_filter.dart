@@ -1,7 +1,8 @@
 enum LeaderboardScope {
-  global,
-  country,
   city,
+  country,
+  global,
+  friends,
 }
 
 enum LeaderboardPeriod {

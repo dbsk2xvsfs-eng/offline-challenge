@@ -1,8 +1,13 @@
 import 'session_model.dart';
 import 'best_stats_model.dart';
+import 'daily_goal_service.dart';
 
 class BestStatsService {
-  BestStatsModel calculate(List<SessionModel> sessions) {
+  final DailyGoalService _goalService = DailyGoalService();
+
+  Future<BestStatsModel> calculate(List<SessionModel> sessions) async {
+    final goal = await _goalService.loadGoalMinutes();
+
     final Map<String, int> dayMap = {};
     final Map<String, int> weekMap = {};
     final Map<String, int> monthMap = {};
@@ -19,17 +24,20 @@ class BestStatsService {
       monthMap[monthKey] = (monthMap[monthKey] ?? 0) + s.durationMinutes;
     }
 
-    int bestDay = _max(dayMap);
-    int bestWeek = _max(weekMap);
-    int bestMonth = _max(monthMap);
+    final bestDay = _max(dayMap);
+    final bestWeek = _max(weekMap);
+    final bestMonth = _max(monthMap);
 
-    int streak = _calculateStreak(dayMap);
+    final streak = _calculateCurrentStreak(dayMap, goal);
+    final bestStreak = _calculateBestStreak(dayMap, goal);
 
     return BestStatsModel(
       bestDayMinutes: bestDay,
       bestWeekMinutes: bestWeek,
       bestMonthMinutes: bestMonth,
       streakDays: streak,
+      bestStreakDays: bestStreak,
+      dailyGoalMinutes: goal,
     );
   }
 
@@ -43,7 +51,28 @@ class BestStatsService {
     return '${weekStart.year}-${weekStart.month}-${weekStart.day}';
   }
 
-  int _calculateStreak(Map<String, int> dayMap) {
+  // 🔥 CURRENT STREAK (od dneška zpět)
+  int _calculateCurrentStreak(Map<String, int> dayMap, int goal) {
+    int streak = 0;
+    DateTime current = DateTime.now();
+
+    while (true) {
+      final key = '${current.year}-${current.month}-${current.day}';
+      final minutes = dayMap[key] ?? 0;
+
+      if (minutes >= goal) {
+        streak++;
+        current = current.subtract(const Duration(days: 1));
+      } else {
+        break;
+      }
+    }
+
+    return streak;
+  }
+
+  // 🔥 BEST STREAK EVER
+  int _calculateBestStreak(Map<String, int> dayMap, int goal) {
     if (dayMap.isEmpty) return 0;
 
     final dates = dayMap.keys
@@ -56,25 +85,33 @@ class BestStatsService {
       );
     })
         .toList()
-      ..sort((a, b) => b.compareTo(a));
+      ..sort();
 
-    int streak = 0;
-    DateTime current = DateTime.now();
+    int best = 0;
+    int current = 0;
+
+    DateTime? prev;
 
     for (final d in dates) {
-      final day = DateTime(d.year, d.month, d.day);
-      final today = DateTime(current.year, current.month, current.day);
+      final key = '${d.year}-${d.month}-${d.day}';
+      final minutes = dayMap[key] ?? 0;
 
-      if (day == today || day == today.subtract(const Duration(days: 1))) {
-        streak++;
-        current = day.subtract(const Duration(days: 1));
-      } else if (day == today.subtract(Duration(days: streak))) {
-        streak++;
+      if (minutes >= goal) {
+        if (prev != null &&
+            d.difference(prev).inDays == 1) {
+          current++;
+        } else {
+          current = 1;
+        }
+
+        if (current > best) best = current;
       } else {
-        break;
+        current = 0;
       }
+
+      prev = d;
     }
 
-    return streak;
+    return best;
   }
 }

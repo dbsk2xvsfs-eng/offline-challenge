@@ -18,7 +18,11 @@ import '../profile/profile_service.dart';
 import 'tracking_settings_service.dart';
 import 'screen_off_tracker_service.dart';
 import 'native_tracking_service.dart';
+import '../notifications/notification_settings_screen.dart';
+import '../notifications/local_notification_service.dart';
+import 'stats_detail_screen.dart';
 
+import 'daily_goal_service.dart';
 
 class OfflineHomeScreen extends StatefulWidget {
   const OfflineHomeScreen({super.key});
@@ -33,6 +37,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
   final LeaderboardService _leaderboardService = LeaderboardService();
 
   final NativeTrackingService _nativeTrackingService = NativeTrackingService();
+  final DailyGoalService _dailyGoalService = DailyGoalService();
 
   final ProfileService _profileService = ProfileService();
   final ScreenOffTrackerService _screenOffTrackerService =
@@ -52,6 +57,10 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
   int? _yourRank;
   int _participantCount = 0;
   int _yourRankMinutes = 0;
+  int _bestRankMinutes = 0;
+
+  LeaderboardScope _leaderboardScope = LeaderboardScope.city;
+  LeaderboardPeriod _leaderboardPeriod = LeaderboardPeriod.week;
 
   Timer? _uiTimer;
   bool _loading = true;
@@ -67,6 +76,8 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
     bestWeekMinutes: 0,
     bestMonthMinutes: 0,
     streakDays: 0,
+    bestStreakDays: 0,
+    dailyGoalMinutes: 120,
   );
 
   Future<void> _refreshProfile() async {
@@ -87,6 +98,65 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
     _bestStats = await controller.loadBestStats();
   }
 
+  Future<void> _showGoalPicker() async {
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text(
+                  'Set daily offline goal',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text('Choose how much offline time you want per day'),
+              ),
+              ListTile(
+                title: const Text('30 min / day'),
+                onTap: () => Navigator.pop(context, 30),
+              ),
+              ListTile(
+                title: const Text('1 h / day'),
+                onTap: () => Navigator.pop(context, 60),
+              ),
+              ListTile(
+                title: const Text('2 h / day'),
+                onTap: () => Navigator.pop(context, 120),
+              ),
+              ListTile(
+                title: const Text('3 h / day'),
+                onTap: () => Navigator.pop(context, 180),
+              ),
+              ListTile(
+                title: const Text('4 h / day'),
+                onTap: () => Navigator.pop(context, 240),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (selected == null) return;
+
+    await _dailyGoalService.saveGoalMinutes(selected);
+
+    await _refreshBestStats();
+
+    if (!mounted) return;
+
+    setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Daily goal set to ${formatMinutes(selected)} / day'),
+      ),
+    );
+  }
+
+
   Future<void> _refreshRankingPreview() async {
     final users = _leaderboardService.filterUsers(
       users: _leaderboardService.loadFakeUsers(
@@ -94,25 +164,147 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
         yourCity: _profile.city,
         yourCountry: _profile.country,
       ),
-      scope: LeaderboardScope.city,
-      period: LeaderboardPeriod.week,
+      scope: _leaderboardScope,
+      period: _leaderboardPeriod,
       yourCountry: _profile.country,
       yourCity: _profile.city,
     );
 
     final youIndex = users.indexWhere((u) => u.isYou);
+
     _participantCount = users.length;
+    _bestRankMinutes = users.isEmpty
+        ? 0
+        : _leaderboardService.minutesForPeriod(
+      users.first,
+      _leaderboardPeriod,
+    );
 
     if (youIndex >= 0) {
       _yourRank = youIndex + 1;
       _yourRankMinutes = _leaderboardService.minutesForPeriod(
         users[youIndex],
-        LeaderboardPeriod.week,
+        _leaderboardPeriod,
       );
     } else {
       _yourRank = null;
       _yourRankMinutes = 0;
     }
+  }
+
+  String _scopeLabel() {
+    switch (_leaderboardScope) {
+      case LeaderboardScope.city:
+        return _profile.city;
+      case LeaderboardScope.country:
+        return _profile.country;
+      case LeaderboardScope.global:
+        return 'Global';
+      case LeaderboardScope.friends:
+        return 'Friends';
+    }
+  }
+
+  String _periodLabel() {
+    switch (_leaderboardPeriod) {
+      case LeaderboardPeriod.day:
+        return 'Today';
+      case LeaderboardPeriod.week:
+        return 'This week';
+      case LeaderboardPeriod.month:
+        return 'This month';
+      case LeaderboardPeriod.all:
+        return 'All time';
+    }
+  }
+
+  Future<void> _showScopePicker() async {
+    final selected = await showModalBottomSheet<LeaderboardScope>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text(
+                'Choose leaderboard',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.location_city),
+              title: Text('City • ${_profile.city}'),
+              onTap: () => Navigator.pop(context, LeaderboardScope.city),
+            ),
+            ListTile(
+              leading: const Icon(Icons.flag),
+              title: Text('Country • ${_profile.country}'),
+              onTap: () => Navigator.pop(context, LeaderboardScope.country),
+            ),
+            ListTile(
+              leading: const Icon(Icons.group),
+              title: const Text('Friends'),
+              subtitle: const Text('Private group'),
+              onTap: () => Navigator.pop(context, LeaderboardScope.friends),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selected == null) return;
+
+    setState(() {
+      _leaderboardScope = selected;
+    });
+
+    await _refreshRankingPreview();
+
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _showPeriodPicker() async {
+    final selected = await showModalBottomSheet<LeaderboardPeriod>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text(
+                'Choose period',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.today),
+              title: const Text('Today'),
+              onTap: () => Navigator.pop(context, LeaderboardPeriod.day),
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_view_week),
+              title: const Text('This week'),
+              onTap: () => Navigator.pop(context, LeaderboardPeriod.week),
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_month),
+              title: const Text('This month'),
+              onTap: () => Navigator.pop(context, LeaderboardPeriod.month),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selected == null) return;
+
+    setState(() {
+      _leaderboardPeriod = selected;
+    });
+
+    await _refreshRankingPreview();
+
+    if (mounted) setState(() {});
   }
 
   @override
@@ -168,6 +360,17 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
     });
   }
 
+  Future<void> _stopCollecting() async {
+    await _trackingSettingsService.setTrackingEnabled(false);
+    await _nativeTrackingService.stopTrackingService();
+
+    if (!mounted) return;
+
+    setState(() {
+      _trackingEnabled = false;
+    });
+  }
+
   Future<void> _refreshAll() async {
     await _refreshStats();
     await _refreshRankingPreview();
@@ -213,12 +416,25 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
 
   Widget _buildStatCard(
       String title,
-      String value, {
+      int currentMinutes,
+      int averageMinutes, {
         required double titleFont,
         required double valueFont,
         required bool isVerySmallPhone,
       }) {
-    return Expanded(
+    final diff = currentMinutes - averageMinutes;
+    final isUp = diff >= 0;
+
+    final percent = averageMinutes == 0
+        ? 0
+        : ((diff / averageMinutes) * 100).round();
+
+    final arrowIcon = isUp ? Icons.arrow_upward : Icons.arrow_downward;
+    final arrowColor = isUp ? Colors.green : Colors.red;
+
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 220),
+      scale: 1.0,
       child: Container(
         padding: EdgeInsets.symmetric(
           vertical: isVerySmallPhone ? 8 : 10,
@@ -240,17 +456,53 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
                 color: Colors.grey.shade600,
               ),
             ),
-            SizedBox(height: isVerySmallPhone ? 3 : 4),
+            SizedBox(height: isVerySmallPhone ? 4 : 6),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  arrowIcon,
+                  color: arrowColor,
+                  size: isVerySmallPhone ? 18 : 20,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  formatMinutes(currentMinutes),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: valueFont,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 3),
+
             Text(
-              value,
+              averageMinutes == 0
+                  ? 'vs avg: -'
+                  : 'vs avg: ${formatMinutes(averageMinutes)}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: valueFont,
-                fontWeight: FontWeight.bold,
+                fontSize: isVerySmallPhone ? 9 : 10,
+                color: Colors.grey.shade600,
               ),
             ),
+
+            if (averageMinutes > 0)
+              Text(
+                '${percent >= 0 ? '+' : ''}$percent%',
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: isVerySmallPhone ? 9 : 10,
+                  color: arrowColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
           ],
         ),
       ),
@@ -264,74 +516,174 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
       return const SizedBox.shrink();
     }
 
+    final isLeading = _yourRank == 1;
+    final diffMinutes = _bestRankMinutes - _yourRankMinutes;
+
+    final percentBehind = _bestRankMinutes <= 0
+        ? 0
+        : ((diffMinutes / _bestRankMinutes) * 100).round();
+
+    final statusText = isLeading
+        ? '🏆 You are leading'
+        : diffMinutes <= 60
+        ? '🔥 Close to #1'
+        : '💪 Keep pushing';
+
+    final resetText = switch (_leaderboardPeriod) {
+      LeaderboardPeriod.day => 'Today • resets at midnight',
+      LeaderboardPeriod.week => 'This week • resets Monday',
+      LeaderboardPeriod.month => 'This month • resets on the 1st',
+      LeaderboardPeriod.all => 'All time • never resets',
+    };
+
+    final diffText = isLeading
+        ? 'You are #1'
+        : '${formatMinutes(diffMinutes)} behind #1 • -$percentBehind%';
+
     return Container(
-      padding: EdgeInsets.all(isVerySmallPhone ? 10 : 12),
+      padding: EdgeInsets.all(isVerySmallPhone ? 12 : 14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.blue.shade600,
+            Colors.blue.shade700,
             Colors.blue.shade400,
           ],
         ),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.emoji_events,
-            color: Colors.white,
-            size: isVerySmallPhone ? 22 : 24,
-          ),
-          SizedBox(width: isVerySmallPhone ? 8 : 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Your rank: #$_yourRank',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: _showScopePicker,
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.public,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          '${_scopeLabel()} ▼',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: isVerySmallPhone ? 13 : 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: _showPeriodPicker,
+                child: Text(
+                  '${_periodLabel()} ▼',
                   style: TextStyle(
-                    fontSize: isVerySmallPhone ? 14 : 15,
+                    fontSize: isVerySmallPhone ? 12 : 13,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Out of $_participantCount • ${_profile.city}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: isVerySmallPhone ? 11 : 12,
-                    color: Colors.white70,
-                  ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Icon(
+                Icons.emoji_events,
+                color: Colors.white,
+                size: isVerySmallPhone ? 24 : 28,
+              ),
+              const SizedBox(width: 10),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Your rank: #$_yourRank of $_participantCount',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: isVerySmallPhone ? 15 : 16,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      statusText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: isVerySmallPhone ? 12 : 13,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                    ),
+                  ],
                 ),
-                if (!isVerySmallPhone) ...[
-                  const SizedBox(height: 2),
-                  const Text(
-                    'This week',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+              ),
+
+              const SizedBox(width: 8),
+
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Your time',
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: isVerySmallPhone ? 10 : 11,
                       color: Colors.white70,
                     ),
                   ),
+                  Text(
+                    formatMinutes(_yourRankMinutes),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: isVerySmallPhone ? 15 : 17,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
                 ],
-              ],
-            ),
+              ),
+            ],
           ),
-          SizedBox(width: isVerySmallPhone ? 8 : 10),
-          Text(
-            formatMinutes(_yourRankMinutes),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: isVerySmallPhone ? 14 : 15,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+
+          const SizedBox(height: 8),
+
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              vertical: 7,
+              horizontal: 10,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '$diffText\n$resetText',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: isVerySmallPhone ? 11 : 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
           ),
         ],
@@ -342,70 +694,140 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
   Widget _buildBestStatsCompactCard({
     required bool isVerySmallPhone,
   }) {
-    return Container(
-      padding: EdgeInsets.all(isVerySmallPhone ? 10 : 12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Your best',
-            style: TextStyle(
-              fontSize: isVerySmallPhone ? 14 : 15,
-              fontWeight: FontWeight.bold,
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            padding: EdgeInsets.all(isVerySmallPhone ? 12 : 14),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.orange.withOpacity(0.25),
+              ),
             ),
-          ),
-          SizedBox(height: isVerySmallPhone ? 6 : 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Day: ${formatMinutes(_bestStats.bestDayMinutes)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: isVerySmallPhone ? 12 : 13),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  'Week: ${formatMinutes(_bestStats.bestWeekMinutes)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: isVerySmallPhone ? 12 : 13),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: isVerySmallPhone ? 3 : 4),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Month: ${formatMinutes(_bestStats.bestMonthMinutes)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: isVerySmallPhone ? 12 : 13),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  '🔥 ${_bestStats.streakDays} day streak',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '🔥 Streak',
                   style: TextStyle(
-                    fontSize: isVerySmallPhone ? 12 : 13,
+                    fontSize: isVerySmallPhone ? 14 : 15,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 10),
+                Text(
+                  '${_bestStats.streakDays} days',
+                  style: TextStyle(
+                    fontSize: isVerySmallPhone ? 20 : 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                InkWell(
+                  onTap: _showGoalPicker,
+                  child: Text(
+                    'Goal: ${formatMinutes(_bestStats.dailyGoalMinutes)} / day',
+                    style: TextStyle(
+                      fontSize: isVerySmallPhone ? 11 : 12,
+                      color: Colors.blue.shade700,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Best: ${_bestStats.bestStreakDays} days',
+                  style: TextStyle(
+                    fontSize: isVerySmallPhone ? 11 : 12,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        ),
+
+        const SizedBox(width: 10),
+
+        Expanded(
+          child: Container(
+            padding: EdgeInsets.all(isVerySmallPhone ? 12 : 14),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.grey.shade300,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '⭐ Best',
+                  style: TextStyle(
+                    fontSize: isVerySmallPhone ? 14 : 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                _bestRow(
+                  'Day',
+                  formatMinutes(_bestStats.bestDayMinutes),
+                  isVerySmallPhone,
+                ),
+                const SizedBox(height: 5),
+
+                _bestRow(
+                  'Week',
+                  formatMinutes(_bestStats.bestWeekMinutes),
+                  isVerySmallPhone,
+                ),
+                const SizedBox(height: 5),
+
+                _bestRow(
+                  'Month',
+                  formatMinutes(_bestStats.bestMonthMinutes),
+                  isVerySmallPhone,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _bestRow(
+      String label,
+      String value,
+      bool isVerySmallPhone,
+      ) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: isVerySmallPhone ? 11 : 12,
+              color: Colors.grey.shade700,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: isVerySmallPhone ? 11 : 12,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
     );
   }
 
@@ -446,6 +868,10 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
     final statValueFont = isVerySmallPhone ? 13.0 : 14.0;
     final buttonHeight = isVerySmallPhone ? 42.0 : 46.0;
 
+    final dailyAverageMinutes = controller.dailyAverageUntilNowMinutes;
+    final weeklyAverageMinutes = controller.weeklyAverageUntilNowMinutes;
+    final monthlyAverageMinutes = controller.monthlyAverageUntilNowMinutes;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Offline Challenge'),
@@ -453,6 +879,19 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _refreshAll,
+          ),
+
+
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const NotificationSettingsScreen(),
+                ),
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.share_outlined),
@@ -514,28 +953,89 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
               SizedBox(height: sectionSpacing),
               Row(
                 children: [
-                  _buildStatCard(
-                    'Today',
-                    formatMinutes(_stats.todayMinutes),
-                    titleFont: statTitleFont,
-                    valueFont: statValueFont,
-                    isVerySmallPhone: isVerySmallPhone,
+                  Expanded(
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => StatsDetailScreen(
+                              title: 'Daily offline time',
+                              currentLabel: 'Today',
+                              currentMinutes: _stats.todayMinutes,
+                              averageMinutes: dailyAverageMinutes,
+                              chartValues: controller.dailyChartValues,
+                            ),
+                          ),
+                        );
+                      },
+                      child: _buildStatCard(
+                        'Today',
+                        _stats.todayMinutes,
+                        dailyAverageMinutes,
+                        titleFont: statTitleFont,
+                        valueFont: statValueFont,
+                        isVerySmallPhone: isVerySmallPhone,
+                      ),
+                    ),
                   ),
+
                   const SizedBox(width: 6),
-                  _buildStatCard(
-                    'Week',
-                    formatMinutes(_stats.weekMinutes),
-                    titleFont: statTitleFont,
-                    valueFont: statValueFont,
-                    isVerySmallPhone: isVerySmallPhone,
+
+                  Expanded(
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => StatsDetailScreen(
+                              title: 'Weekly offline time',
+                              currentLabel: 'This week',
+                              currentMinutes: _stats.weekMinutes,
+                              averageMinutes: weeklyAverageMinutes,
+                              chartValues: controller.weeklyChartValues,
+                            ),
+                          ),
+                        );
+                      },
+                      child: _buildStatCard(
+                        'Week',
+                        _stats.weekMinutes,
+                        weeklyAverageMinutes,
+                        titleFont: statTitleFont,
+                        valueFont: statValueFont,
+                        isVerySmallPhone: isVerySmallPhone,
+                      ),
+                    ),
                   ),
+
                   const SizedBox(width: 6),
-                  _buildStatCard(
-                    'Month',
-                    formatMinutes(_stats.monthMinutes),
-                    titleFont: statTitleFont,
-                    valueFont: statValueFont,
-                    isVerySmallPhone: isVerySmallPhone,
+
+                  Expanded(
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => StatsDetailScreen(
+                              title: 'Monthly offline time',
+                              currentLabel: 'This month',
+                              currentMinutes: _stats.monthMinutes,
+                              averageMinutes: monthlyAverageMinutes,
+                              chartValues: controller.monthlyChartValues,
+                            ),
+                          ),
+                        );
+                      },
+                      child: _buildStatCard(
+                        'Month',
+                        _stats.monthMinutes,
+                        monthlyAverageMinutes,
+                        titleFont: statTitleFont,
+                        valueFont: statValueFont,
+                        isVerySmallPhone: isVerySmallPhone,
+                      ),
+                    ),
                   ),
                 ],
               ),

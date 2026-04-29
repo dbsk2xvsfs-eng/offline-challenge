@@ -118,6 +118,8 @@ class LeaderboardService {
       case LeaderboardScope.city:
         result = result.where((u) => u.city == yourCity).toList();
         break;
+      case LeaderboardScope.friends:
+        return users.where((u) => u.isYou).toList();
     }
 
     result.sort((a, b) {
