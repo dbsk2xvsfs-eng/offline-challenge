@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "275958337142",
+    "project_id": "offline-timer",
+    "storage_bucket": "offline-timer.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:275958337142:android:38836fc2d8b6fd053dd957",
+        "android_client_info": {
+          "package_name": "com.petrknejzlik.offlinetimer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD0XuxVLDRFYemS8gJlnSsQEJbLI0NJ78Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:275958337142:android:e1ee5e5271e3c57b3dd957",
+        "android_client_info": {
+          "package_name": "com.petrknejzlik.offlinetimer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD0XuxVLDRFYemS8gJlnSsQEJbLI0NJ78Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,4 +1,4 @@
-package com.example.offline_timer_app
+package com.petrknejzlik.offlinetimer
 
 import android.app.Notification
 import android.app.NotificationChannel

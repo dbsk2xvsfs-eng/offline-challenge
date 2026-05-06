@@ -11,33 +11,74 @@ import 'stats_service.dart';
 import 'best_stats_model.dart';
 import 'best_stats_service.dart';
 
+import 'offline_counting_settings_service.dart';
+import 'offline_counting_service.dart';
+
 class OfflineTrackerController {
   final LocalStorageService _storage = LocalStorageService();
   final SessionHistoryService _historyService = SessionHistoryService();
   final BestStatsService _bestStatsService = BestStatsService();
 
+  final StatsService _statsService = StatsService();
+
+  final OfflineCountingSettingsService _countingSettingsService =
+  OfflineCountingSettingsService();
+
+  final OfflineCountingService _countingService = OfflineCountingService();
+
   ActiveSession session = const ActiveSession(
     isRunning: false,
   );
 
-  final StatsService _statsService = StatsService();
-
   Timer? _ticker;
 
-  // 👇 NOVÉ
   List<SessionModel> _cachedHistory = const [];
+
+  List<SessionModel> loadHistorySync() {
+    return _cachedHistory;
+  }
+
+  bool _excludeSleep = false;
+  int _sleepStartHour = 22;
+  int _sleepStartMinute = 0;
+  int _sleepEndHour = 7;
+  int _sleepEndMinute = 0;
 
   Future<void> init() async {
     session = await _storage.loadCurrentSession();
+    await _loadCountingSettings();
+  }
+
+  Future<void> _loadCountingSettings() async {
+    _excludeSleep = await _countingSettingsService.loadExcludeSleepTime();
+
+    final sleepStart = await _countingSettingsService.loadSleepStart();
+    final sleepEnd = await _countingSettingsService.loadSleepEnd();
+
+    _sleepStartHour = sleepStart.hour;
+    _sleepStartMinute = sleepStart.minute;
+    _sleepEndHour = sleepEnd.hour;
+    _sleepEndMinute = sleepEnd.minute;
+  }
+
+  int _countedMinutes(SessionModel session) {
+    return _countingService.countedMinutes(
+      session: session,
+      excludeSleep: _excludeSleep,
+      sleepStartHour: _sleepStartHour,
+      sleepStartMinute: _sleepStartMinute,
+      sleepEndHour: _sleepEndHour,
+      sleepEndMinute: _sleepEndMinute,
+    );
   }
 
   Future<StatsModel> loadStats() async {
     final history = await _historyService.loadHistory();
 
-    // 👇 NOVÉ
     _cachedHistory = history;
+    await _loadCountingSettings();
 
-    return _statsService.calculate(history);
+    return await _statsService.calculate(history);
   }
 
   Future<BestStatsModel> loadBestStats() async {
@@ -94,13 +135,12 @@ class OfflineTrackerController {
     await _historyService.clearHistory();
   }
 
-  // 👇 NOVÉ - DAILY AVG
   int get dailyAverageMinutes {
     if (_cachedHistory.isEmpty) return 0;
 
     final total = _cachedHistory.fold<int>(
       0,
-          (sum, s) => sum + s.durationMinutes,
+          (sum, s) => sum + _countedMinutes(s),
     );
 
     final days = _cachedHistory
@@ -115,13 +155,12 @@ class OfflineTrackerController {
     return (total / days).round();
   }
 
-  // 👇 NOVÉ - WEEKLY AVG
   int get weeklyAverageMinutes {
     if (_cachedHistory.isEmpty) return 0;
 
     final total = _cachedHistory.fold<int>(
       0,
-          (sum, s) => sum + s.durationMinutes,
+          (sum, s) => sum + _countedMinutes(s),
     );
 
     final weeks = _cachedHistory
@@ -137,13 +176,12 @@ class OfflineTrackerController {
     return (total / weeks).round();
   }
 
-  // 👇 NOVÉ - MONTHLY AVG
   int get monthlyAverageMinutes {
     if (_cachedHistory.isEmpty) return 0;
 
     final total = _cachedHistory.fold<int>(
       0,
-          (sum, s) => sum + s.durationMinutes,
+          (sum, s) => sum + _countedMinutes(s),
     );
 
     final months = _cachedHistory
@@ -173,7 +211,8 @@ class OfflineTrackerController {
       final sessionMinuteOfDay = start.hour * 60 + start.minute;
 
       if (sessionMinuteOfDay <= todayMinutesFromMidnight) {
-        totalsByDay[dayKey] = (totalsByDay[dayKey] ?? 0) + s.durationMinutes;
+        totalsByDay[dayKey] =
+            (totalsByDay[dayKey] ?? 0) + _countedMinutes(s);
       }
     }
 
@@ -203,7 +242,8 @@ class OfflineTrackerController {
                   (d.hour * 60 + d.minute) <= nowMinutes);
 
       if (include) {
-        totalsByWeek[weekKey] = (totalsByWeek[weekKey] ?? 0) + s.durationMinutes;
+        totalsByWeek[weekKey] =
+            (totalsByWeek[weekKey] ?? 0) + _countedMinutes(s);
       }
     }
 
@@ -233,7 +273,7 @@ class OfflineTrackerController {
 
       if (include) {
         totalsByMonth[monthKey] =
-            (totalsByMonth[monthKey] ?? 0) + s.durationMinutes;
+            (totalsByMonth[monthKey] ?? 0) + _countedMinutes(s);
       }
     }
 
@@ -242,7 +282,6 @@ class OfflineTrackerController {
     final total = totalsByMonth.values.fold<int>(0, (a, b) => a + b);
     return (total / totalsByMonth.length).round();
   }
-
 
   int get currentElapsedMinutes {
     if (!session.isRunning || session.startedAt == null) return 0;
@@ -272,7 +311,7 @@ class OfflineTrackerController {
             d.month == day.month &&
             d.day == day.day;
       })
-          .fold<int>(0, (sum, s) => sum + s.durationMinutes);
+          .fold<int>(0, (sum, s) => sum + _countedMinutes(s));
 
       return total;
     });
@@ -295,7 +334,7 @@ class OfflineTrackerController {
         final d = s.startedAt.toLocal();
         return !d.isBefore(weekStart) && !d.isAfter(weekEnd);
       })
-          .fold<int>(0, (sum, s) => sum + s.durationMinutes);
+          .fold<int>(0, (sum, s) => sum + _countedMinutes(s));
 
       return total;
     });
@@ -314,10 +353,9 @@ class OfflineTrackerController {
         final d = s.startedAt.toLocal();
         return d.year == month.year && d.month == month.month;
       })
-          .fold<int>(0, (sum, s) => sum + s.durationMinutes);
+          .fold<int>(0, (sum, s) => sum + _countedMinutes(s));
 
       return total;
     });
   }
-
 }

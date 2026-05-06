@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'session_model.dart';
+import 'offline_counting_settings_service.dart';
+import 'dart:math' as math;
 
 class StatsDetailScreen extends StatelessWidget {
   final String title;
@@ -6,6 +9,7 @@ class StatsDetailScreen extends StatelessWidget {
   final int currentMinutes;
   final int averageMinutes;
   final List<int> chartValues;
+  final List<SessionModel> sessions;
 
   const StatsDetailScreen({
     super.key,
@@ -14,6 +18,7 @@ class StatsDetailScreen extends StatelessWidget {
     required this.currentMinutes,
     required this.averageMinutes,
     required this.chartValues,
+    required this.sessions,
   });
 
   String _formatMinutes(int minutes) {
@@ -37,14 +42,65 @@ class StatsDetailScreen extends StatelessWidget {
     return '${index + 1}';
   }
 
+  int _maxForPeriod(int count) {
+    if (count == 7) return 24 * 60;
+    if (count == 4) return 7 * 24 * 60;
+    if (count == 6) return 30 * 24 * 60;
+    return 24 * 60;
+  }
+
+  Future<_SleepWindow> _loadSleepWindow() async {
+    final service = OfflineCountingSettingsService();
+
+    final start = await service.loadSleepStart();
+    final end = await service.loadSleepEnd();
+
+    return _SleepWindow(
+      startMinute: start.hour * 60 + start.minute,
+      endMinute: end.hour * 60 + end.minute,
+    );
+  }
+
+  _PiePeriod _periodForTitle(String title) {
+    final now = DateTime.now();
+    final lower = title.toLowerCase();
+
+    if (lower.contains('weekly')) {
+      final start = DateTime(now.year, now.month, now.day)
+          .subtract(Duration(days: now.weekday - 1));
+
+      return _PiePeriod(
+        start: start,
+        end: start.add(const Duration(days: 7)),
+        label: '7 d',
+      );
+    }
+
+    if (lower.contains('monthly')) {
+      final start = DateTime(now.year, now.month, 1);
+      final end = DateTime(now.year, now.month + 1, 1);
+      final days = end.difference(start).inDays;
+
+      return _PiePeriod(
+        start: start,
+        end: end,
+        label: '$days d',
+      );
+    }
+
+    final start = DateTime(now.year, now.month, now.day);
+
+    return _PiePeriod(
+      start: start,
+      end: start.add(const Duration(days: 1)),
+      label: '24 h',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final values = chartValues.isEmpty ? List<int>.filled(7, 0) : chartValues;
-
-    final maxValue = values.fold<int>(
-      1,
-          (max, value) => value > max ? value : max,
-    );
+    final maxMinutes = _maxForPeriod(values.length);
 
     return Scaffold(
       appBar: AppBar(
@@ -77,18 +133,59 @@ class StatsDetailScreen extends StatelessWidget {
                   ),
                 ],
               ),
-
               const SizedBox(height: 24),
-
               Text(
                 'Progress',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
               ),
+                const SizedBox(height: 6),
+              Row(
+                children: [
+                  _LegendDot(color: Colors.green, label: 'Offline'),
+                  const SizedBox(width: 12),
+                  _LegendDot(color: Colors.redAccent, label: 'Online'),
+                  const SizedBox(width: 12),
+                  _LegendDot(color: Colors.deepPurple, label: 'Sleep'),
+                  const SizedBox(width: 12),
+                  _LegendDot(color: Colors.blueGrey, label: 'Future'),
+                ],
+              ),
+
+              Center(
+                child: FutureBuilder<_SleepWindow>(
+                  future: _loadSleepWindow(),
+                  builder: (context, snapshot) {
+                    final sleep = snapshot.data ??
+                        const _SleepWindow(
+                          startMinute: 22 * 60,
+                          endMinute: 7 * 60,
+                        );
+
+                    final period = _periodForTitle(title);
+
+                    return SizedBox(
+                      width: 280,
+                      height: 280,
+                      child: _TimePieChart(
+                        sessions: sessions,
+                        periodStart: period.start,
+                        periodEnd: period.end,
+                        totalLabel: period.label,
+                        sleepStartMinute: sleep.startMinute,
+                        sleepEndMinute: sleep.endMinute,
+                      ),
+                    );
+                  },
+                ),
+              ),
 
               const SizedBox(height: 12),
 
+              const SizedBox(height: 16),
+
+              const SizedBox(height: 10),
               Expanded(
                 child: Container(
                   width: double.infinity,
@@ -101,66 +198,91 @@ class StatsDetailScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: values.asMap().entries.map((entry) {
                       final index = entry.key;
-                      final value = entry.value;
-                      final isZero = value == 0;
+                      final offline = entry.value.clamp(0, maxMinutes);
+                      final remaining = maxMinutes - offline;
 
-                      final heightFactor =
-                      isZero ? 0.015 : (value / maxValue).clamp(0.08, 1.0);
+                      final minVisibleOffline = (maxMinutes * 0.06).round();
+
+                      final visibleOffline = offline <= 0
+                          ? 1
+                          : (offline < minVisibleOffline ? minVisibleOffline : offline);
+
+                      final visibleRemaining = (maxMinutes - visibleOffline).clamp(1, maxMinutes);
+
+                      final offlineFlex = visibleOffline;
+                      final remainingFlex = visibleRemaining;
 
                       return Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               Expanded(
-                                child: Align(
-                                  alignment: Alignment.bottomCenter,
-                                  child: FractionallySizedBox(
-                                    heightFactor: heightFactor,
-                                    child: AnimatedContainer(
-                                      duration:
-                                      const Duration(milliseconds: 350),
-                                      curve: Curves.easeOutCubic,
-                                      width: double.infinity,
-                                      decoration: BoxDecoration(
-                                        color: isZero
-                                            ? Colors.grey.shade300
-                                            : Colors.blue,
-                                        borderRadius:
-                                        BorderRadius.circular(10),
-                                      ),
-                                      child: isZero
-                                          ? null
-                                          : Center(
-                                        child: RotatedBox(
-                                          quarterTurns: 3,
-                                          child: FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            child: Text(
-                                              _formatMinutes(value),
-                                              maxLines: 1,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 18,
-                                                fontWeight:
-                                                FontWeight.bold,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Column(
+                                    children: [
+                                      Expanded(
+                                        flex: remainingFlex,
+                                        child: Container(
+                                          width: 46,
+                                          color: Colors.red.withOpacity(0.55),
+                                          child: remaining > 0
+                                              ? Center(
+                                            child: RotatedBox(
+                                              quarterTurns: 3,
+                                              child: FittedBox(
+                                                fit: BoxFit.scaleDown,
+                                                child: Text(
+                                                  _formatMinutes(remaining),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 12,
+                                                    fontWeight:
+                                                    FontWeight.bold,
+                                                  ),
+                                                ),
                                               ),
                                             ),
-                                          ),
+                                          )
+                                              : null,
                                         ),
                                       ),
-                                    ),
+                                      Expanded(
+                                        flex: offlineFlex,
+                                        child: Container(
+                                          width: 46,
+                                          color: offline == 0
+                                              ? Colors.grey.shade300
+                                              : Colors.green,
+                                          child: offline > 0
+                                              ? Center(
+                                            child: RotatedBox(
+                                              quarterTurns: 3,
+                                              child: FittedBox(
+                                                fit: BoxFit.scaleDown,
+                                                child: Text(
+                                                  _formatMinutes(offline),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                    fontWeight:
+                                                    FontWeight.w900,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          )
+                                              : null,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
-
                               const SizedBox(height: 8),
-
                               Text(
                                 _bottomLabel(index, values.length),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
@@ -205,16 +327,12 @@ class _InfoCard extends StatelessWidget {
           children: [
             Text(
               title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 10),
             FittedBox(
-              fit: BoxFit.scaleDown,
               child: Text(
                 value,
-                maxLines: 1,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.bold,
                   fontSize: 30,
@@ -227,3 +345,301 @@ class _InfoCard extends StatelessWidget {
     );
   }
 }
+
+class _SleepWindow {
+  final int startMinute;
+  final int endMinute;
+
+  const _SleepWindow({
+    required this.startMinute,
+    required this.endMinute,
+  });
+}
+
+class _PiePeriod {
+  final DateTime start;
+  final DateTime end;
+  final String label;
+
+  const _PiePeriod({
+    required this.start,
+    required this.end,
+    required this.label,
+  });
+}
+
+class _TimePieChart extends StatelessWidget {
+  final List<SessionModel> sessions;
+  final DateTime periodStart;
+  final DateTime periodEnd;
+  final String totalLabel;
+  final int sleepStartMinute;
+  final int sleepEndMinute;
+
+  const _TimePieChart({
+    required this.sessions,
+    required this.periodStart,
+    required this.periodEnd,
+    required this.totalLabel,
+    required this.sleepStartMinute,
+    required this.sleepEndMinute,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _PiePainter(
+        sessions: sessions,
+        periodStart: periodStart,
+        periodEnd: periodEnd,
+        totalLabel: totalLabel,
+        sleepStartMinute: sleepStartMinute,
+        sleepEndMinute: sleepEndMinute,
+      ),
+    );
+  }
+}
+
+class _PiePainter extends CustomPainter {
+  final List<SessionModel> sessions;
+  final DateTime periodStart;
+  final DateTime periodEnd;
+  final String totalLabel;
+  final int sleepStartMinute;
+  final int sleepEndMinute;
+
+  _PiePainter({
+    required this.sessions,
+    required this.periodStart,
+    required this.periodEnd,
+    required this.totalLabel,
+    required this.sleepStartMinute,
+    required this.sleepEndMinute,
+  });
+
+  static const double _pi = 3.141592653589793;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final shortest = size.width < size.height ? size.width : size.height;
+    final center = Offset(size.width / 2, size.height / 2);
+
+    final strokeWidth = shortest * 0.11;
+    final radius = shortest * 0.30;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    final totalMinutes = periodEnd.difference(periodStart).inMinutes;
+    final now = DateTime.now();
+
+    Paint paint(Color color) => Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.butt
+      ..color = color;
+
+    final onlinePaint = paint(Colors.redAccent.withOpacity(0.72));
+    final futurePaint = paint(Colors.blueGrey.withOpacity(0.35));
+    final offlinePaint = paint(Colors.green);
+    final sleepPaint = paint(Colors.deepPurple);
+
+    double angleForMinute(int minute) {
+      return -_pi / 2 + (minute / totalMinutes) * 2 * _pi;
+    }
+
+    double sweepForMinutes(int minutes) {
+      return (minutes / totalMinutes) * 2 * _pi;
+    }
+
+    void drawRange(DateTime start, DateTime end, Paint p) {
+      final s = start.isBefore(periodStart) ? periodStart : start;
+      final e = end.isAfter(periodEnd) ? periodEnd : end;
+
+      if (!e.isAfter(s)) return;
+
+      final offset = s.difference(periodStart).inMinutes;
+      final duration = e.difference(s).inMinutes;
+
+      if (duration <= 0) return;
+
+      canvas.drawArc(
+        rect,
+        angleForMinute(offset),
+        sweepForMinutes(duration),
+        false,
+        p,
+      );
+    }
+
+    // základ = budoucnost
+    drawRange(periodStart, periodEnd, futurePaint);
+
+    // proběhlý čas = online
+    final currentEnd = now.isBefore(periodEnd) ? now : periodEnd;
+    drawRange(periodStart, currentEnd, onlinePaint);
+
+    // offline úseky
+    for (final s in sessions) {
+      final start = s.startedAt;
+      final end = start.add(Duration(minutes: s.durationMinutes));
+      drawRange(start, end, offlinePaint);
+    }
+
+    // sleep musí být navrchu: 00:00–wake up + sleep start–24:00
+    DateTime day = DateTime(periodStart.year, periodStart.month, periodStart.day);
+
+    while (day.isBefore(periodEnd)) {
+      final sleepMorningStart = day;
+      final sleepMorningEnd = day.add(Duration(minutes: sleepEndMinute));
+
+      final sleepEveningStart = day.add(Duration(minutes: sleepStartMinute));
+      final sleepEveningEnd = day.add(const Duration(days: 1));
+
+      drawRange(sleepMorningStart, sleepMorningEnd, sleepPaint);
+      drawRange(sleepEveningStart, sleepEveningEnd, sleepPaint);
+
+      day = day.add(const Duration(days: 1));
+    }
+
+    _drawCenterText(canvas, center);
+    _drawSleepLabels(canvas, center, radius, totalMinutes);
+  }
+
+  void _drawCenterText(Canvas canvas, Offset center) {
+    final main = TextPainter(
+      text: TextSpan(
+        text: totalLabel,
+        style: const TextStyle(
+          color: Colors.black87,
+          fontSize: 30,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    main.paint(
+      canvas,
+      Offset(center.dx - main.width / 2, center.dy - main.height / 2 - 12),
+    );
+
+    final sub = TextPainter(
+      text: const TextSpan(
+        text: 'Total time',
+        style: TextStyle(
+          color: Colors.black54,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    sub.paint(
+      canvas,
+      Offset(center.dx - sub.width / 2, center.dy - sub.height / 2 + 20),
+    );
+  }
+
+  void _drawSleepLabels(
+      Canvas canvas,
+      Offset center,
+      double radius,
+      int totalMinutes,
+      ) {
+    if (totalMinutes > 24 * 60) return;
+
+    _drawLabel(
+      canvas,
+      center,
+      radius,
+      sleepEndMinute,
+      '${_formatClock(sleepEndMinute)}\nWake up',
+      color: Colors.deepPurple,
+    );
+
+    _drawLabel(
+      canvas,
+      center,
+      radius,
+      sleepStartMinute,
+      '${_formatClock(sleepStartMinute)}\nSleep start',
+      color: Colors.deepPurple,
+    );
+  }
+
+  String _formatClock(int minute) {
+    final h = (minute ~/ 60).toString().padLeft(2, '0');
+    final m = (minute % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  void _drawLabel(
+      Canvas canvas,
+      Offset center,
+      double radius,
+      int minute,
+      String text, {
+        Color color = Colors.black87,
+      }) {
+    final angle = -_pi / 2 + (minute / (24 * 60)) * 2 * _pi;
+    final labelRadius = radius + 48;
+
+    final x = center.dx + labelRadius * math.sin(angle);
+    final y = center.dy - labelRadius * math.cos(angle);
+
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          height: 1.15,
+        ),
+      ),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: 80);
+
+    painter.paint(
+      canvas,
+      Offset(x - painter.width / 2, y - painter.height / 2),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+class _LegendDot extends StatelessWidget {
+  final Color color;
+  final String label;
+
+  const _LegendDot({
+    required this.color,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12),
+        ),
+      ],
+    );
+  }
+}
+

@@ -1,8 +1,19 @@
 import 'session_model.dart';
 import 'stats_model.dart';
+import 'offline_counting_settings_service.dart';
+import 'offline_counting_service.dart';
 
 class StatsService {
-  StatsModel calculate(List<SessionModel> sessions) {
+  final OfflineCountingSettingsService _settingsService =
+  OfflineCountingSettingsService();
+
+  final OfflineCountingService _countingService = OfflineCountingService();
+
+  Future<StatsModel> calculate(List<SessionModel> sessions) async {
+    final excludeSleep = await _settingsService.loadExcludeSleepTime();
+    final sleepStart = await _settingsService.loadSleepStart();
+    final sleepEnd = await _settingsService.loadSleepEnd();
+
     final now = DateTime.now();
 
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -16,16 +27,25 @@ class StatsService {
     for (final session in sessions) {
       final date = session.startedAt;
 
+      final countedMinutes = _countingService.countedMinutes(
+        session: session,
+        excludeSleep: excludeSleep,
+        sleepStartHour: sleepStart.hour,
+        sleepStartMinute: sleepStart.minute,
+        sleepEndHour: sleepEnd.hour,
+        sleepEndMinute: sleepEnd.minute,
+      );
+
       if (!date.isBefore(todayStart)) {
-        todayMinutes += session.durationMinutes;
+        todayMinutes += countedMinutes;
       }
 
       if (!date.isBefore(weekStart)) {
-        weekMinutes += session.durationMinutes;
+        weekMinutes += countedMinutes;
       }
 
       if (!date.isBefore(monthStart)) {
-        monthMinutes += session.durationMinutes;
+        monthMinutes += countedMinutes;
       }
     }
 

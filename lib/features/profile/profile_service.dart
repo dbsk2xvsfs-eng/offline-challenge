@@ -16,16 +16,31 @@ class ProfileService {
         nickname: '',
         city: '',
         country: '',
+        showInRankings: true, // 🔥 default
       );
     }
 
     final decoded = jsonDecode(raw) as Map<String, dynamic>;
-    return ProfileModel.fromJson(decoded);
+
+    return ProfileModel(
+      nickname: decoded['nickname'] ?? '',
+      city: decoded['city'] ?? '',
+      country: decoded['country'] ?? '',
+      showInRankings: decoded['showInRankings'] ?? true,
+    );
   }
 
   Future<void> saveProfile(ProfileModel profile) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_profileKey, jsonEncode(profile.toJson()));
+
+    final map = {
+      'nickname': profile.nickname,
+      'city': profile.city,
+      'country': profile.country,
+      'showInRankings': profile.showInRankings,
+    };
+
+    await prefs.setString(_profileKey, jsonEncode(map));
   }
 
   Future<void> clearProfile() async {

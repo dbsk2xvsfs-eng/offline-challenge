@@ -3,6 +3,18 @@ import 'package:flutter/material.dart';
 import 'leaderboard_filter.dart';
 import 'leaderboard_service.dart';
 import 'leaderboard_user_model.dart';
+import '../profile/profile_service.dart';
+import '../profile/profile_model.dart';
+
+String flagEmoji(String countryCode) {
+  final code = countryCode.toUpperCase();
+
+  if (code.length != 2) return '🏳️';
+
+  return code.codeUnits
+      .map((c) => String.fromCharCode(127397 + c))
+      .join();
+}
 
 class LeaderboardScreen extends StatefulWidget {
   const LeaderboardScreen({super.key});
@@ -17,20 +29,20 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   LeaderboardScope selectedScope = LeaderboardScope.global;
   LeaderboardPeriod selectedPeriod = LeaderboardPeriod.week;
 
-  final String yourCountry = 'CZ';
-  final String yourCity = 'Prague';
+  final ProfileService _profileService = ProfileService();
 
-  late List<LeaderboardUserModel> allUsers;
+  ProfileModel? _profile;
+  bool _loadingProfile = true;
 
-  @override
-  void initState() {
-    super.initState();
-    allUsers = service.loadFakeUsers(
-      yourNickname: 'You',
-      yourCity: yourCity,
-      yourCountry: yourCountry,
-    );
-  }
+  String get yourCountry => (_profile?.country.trim().isEmpty ?? true)
+      ? 'UN'
+      : _profile!.country.trim().toUpperCase();
+
+  String get yourCity => (_profile?.city.trim().isEmpty ?? true)
+      ? 'unknown'
+      : _profile!.city.trim().toLowerCase();
+
+
 
   String formatMinutes(int minutes) {
     final hours = minutes ~/ 60;
@@ -81,43 +93,35 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await _profileService.loadProfile();
+
+    if (!mounted) return;
+
+    setState(() {
+      _profile = profile;
+      _loadingProfile = false;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final users = service.filterUsers(
-      users: allUsers,
-      scope: selectedScope,
-      period: selectedPeriod,
-      yourCountry: yourCountry,
-      yourCity: yourCity,
-    );
-
-    final youIndex = users.indexWhere((u) => u.isYou);
-    final yourRank = youIndex >= 0 ? youIndex + 1 : null;
-
-    final yourMinutes = youIndex >= 0
-        ? service.minutesForPeriod(users[youIndex], selectedPeriod)
-        : 0;
-
-    final bestMinutes = users.isNotEmpty
-        ? service.minutesForPeriod(users.first, selectedPeriod)
-        : 0;
-
-    final diffMinutes = bestMinutes - yourMinutes;
-    final percentBehind = bestMinutes <= 0
-        ? 0
-        : ((diffMinutes / bestMinutes) * 100).round();
-
-    final isLeading = yourRank == 1;
-
-    final statusText = isLeading
-        ? '🏆 You are leading'
-        : diffMinutes <= 60
-        ? '🔥 Close to #1'
-        : '💪 Keep pushing';
-
-    final diffText = isLeading
-        ? 'You are #1'
-        : '${formatMinutes(diffMinutes)} behind #1 • -$percentBehind%';
-
+    if (_loadingProfile) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('Rankings'),
@@ -132,6 +136,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 return ChoiceChip(
                   label: Text(scopeLabel(scope)),
                   selected: selectedScope == scope,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   onSelected: (_) {
                     setState(() {
                       selectedScope = scope;
@@ -148,6 +154,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 return ChoiceChip(
                   label: Text(periodLabel(period)),
                   selected: selectedPeriod == period,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   onSelected: (_) {
                     setState(() {
                       selectedPeriod = period;
@@ -159,17 +167,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
             const SizedBox(height: 16),
 
-            if (yourRank != null)
-              _YourRankCard(
-                scope: scopeLabel(selectedScope),
-                period: periodLabel(selectedPeriod),
-                rank: yourRank,
-                count: users.length,
-                yourTime: formatMinutes(yourMinutes),
-                statusText: statusText,
-                diffText: diffText,
-                resetText: resetLabel(selectedPeriod),
-              ),
+
 
             const SizedBox(height: 14),
 
@@ -183,22 +181,95 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             const SizedBox(height: 8),
 
             Expanded(
-              child: ListView.builder(
-                itemCount: users.length,
-                itemBuilder: (context, index) {
-                  final user = users[index];
-                  final rank = index + 1;
-                  final minutes = service.minutesForPeriod(
-                    user,
-                    selectedPeriod,
-                  );
+              child: StreamBuilder<List<LeaderboardUserModel>>(
+                stream: service.watchUsers(
+                  scope: selectedScope,
+                  period: selectedPeriod,
+                  yourCountry: yourCountry,
+                  yourCity: yourCity,
+                ),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                  return _LeaderboardUserTile(
-                    rank: rank,
-                    name: user.nickname,
-                    location: '${user.city}, ${user.country}',
-                    time: formatMinutes(minutes),
-                    isYou: user.isYou,
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text('Leaderboard error: ${snapshot.error}'),
+                    );
+                  }
+
+                  final rawUsers = snapshot.data ?? [];
+
+                  final users = (_profile?.showInRankings ?? true)
+                      ? rawUsers
+                      : rawUsers.where((u) => !u.isYou).toList();
+
+                  if (users.isEmpty) {
+                    return const Center(
+                      child: Text('Showing in rankings is off. For change go to profile.'),
+                    );
+                  }
+
+                  final youIndex = users.indexWhere((u) => u.isYou);
+                  final yourRank = youIndex >= 0 ? youIndex + 1 : null;
+
+                  final yourMinutes = youIndex >= 0
+                      ? service.minutesForPeriod(users[youIndex], selectedPeriod)
+                      : 0;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (yourRank != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.emoji_events_outlined, size: 22),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Your rank: #$yourRank of ${users.length}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                formatMinutes(yourMinutes),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: users.length,
+                          itemBuilder: (context, index) {
+                            final user = users[index];
+                            final rank = index + 1;
+                            final minutes = service.minutesForPeriod(
+                              user,
+                              selectedPeriod,
+                            );
+
+                            return _LeaderboardUserTile(
+                              rank: rank,
+                              name: user.nickname,
+                              location: '${user.city}, ${user.country}',
+                              time: formatMinutes(minutes),
+                              isYou: user.isYou,
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -223,128 +294,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 }
 
-class _YourRankCard extends StatelessWidget {
-  final String scope;
-  final String period;
-  final int rank;
-  final int count;
-  final String yourTime;
-  final String statusText;
-  final String diffText;
-  final String resetText;
 
-  const _YourRankCard({
-    required this.scope,
-    required this.period,
-    required this.rank,
-    required this.count,
-    required this.yourTime,
-    required this.statusText,
-    required this.diffText,
-    required this.resetText,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.blue.shade700,
-            Colors.blue.shade400,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '$scope • $period',
-            style: const TextStyle(
-              color: Colors.white70,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(
-                Icons.emoji_events,
-                color: Colors.white,
-                size: 30,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Your rank: #$rank of $count',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    'Your time',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 11,
-                    ),
-                  ),
-                  Text(
-                    yourTime,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            statusText,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              vertical: 8,
-              horizontal: 10,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.16),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              '$diffText\n$resetText',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                height: 1.25,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _LeaderboardUserTile extends StatelessWidget {
   final int rank;
@@ -404,7 +354,7 @@ class _LeaderboardUserTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isYou ? 'You' : name,
+                  '${flagEmoji(location.split(', ').last)} $name',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

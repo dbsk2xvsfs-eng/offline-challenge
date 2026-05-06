@@ -17,7 +17,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   final List<Widget> _screens = const [
     OfflineHomeScreen(),
-    HistoryScreen(),
     LeaderboardScreen(),
     ProfileScreen(),
   ];
@@ -40,10 +39,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             icon: Icon(Icons.timer),
             label: 'Timer',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'History',
-          ),
+
           BottomNavigationBarItem(
             icon: Icon(Icons.leaderboard),
             label: 'Rankings',

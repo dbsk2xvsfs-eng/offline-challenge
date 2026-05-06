@@ -1,4 +1,4 @@
-package com.example.offline_timer_app
+package com.petrknejzlik.offlinetimer
 
 import android.content.Intent
 import android.os.Build

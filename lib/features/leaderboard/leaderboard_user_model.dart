@@ -1,4 +1,5 @@
 class LeaderboardUserModel {
+  final String userId; // 🔥 NOVÉ
   final String nickname;
   final String country;
   final String city;
@@ -9,6 +10,7 @@ class LeaderboardUserModel {
   final bool isYou;
 
   const LeaderboardUserModel({
+    required this.userId, // 🔥 NOVÉ
     required this.nickname,
     required this.country,
     required this.city,

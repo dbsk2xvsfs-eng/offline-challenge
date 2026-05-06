@@ -92,6 +92,29 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
 
   Future<void> _refreshStats() async {
     _stats = await controller.loadStats();
+
+    final latestProfile = await _profileService.loadProfile();
+    _profile = latestProfile;
+
+    if (latestProfile.showInRankings) {
+      await _leaderboardService.uploadMyStats(
+        nickname: latestProfile.nickname.trim().isEmpty
+            ? 'Anonymous'
+            : latestProfile.nickname.trim(),
+        country: latestProfile.country.trim().isEmpty
+            ? 'UN'
+            : latestProfile.country.trim().toUpperCase(),
+        city: latestProfile.city.trim().isEmpty
+            ? 'unknown'
+            : latestProfile.city.trim().toLowerCase(),
+        dayMinutes: _stats.todayMinutes,
+        weekMinutes: _stats.weekMinutes,
+        monthMinutes: _stats.monthMinutes,
+        allMinutes: _stats.monthMinutes,
+      );
+    } else {
+      await _leaderboardService.removeMeFromLeaderboard();
+    }
   }
 
   Future<void> _refreshBestStats() async {
@@ -158,21 +181,19 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
 
 
   Future<void> _refreshRankingPreview() async {
-    final users = _leaderboardService.filterUsers(
-      users: _leaderboardService.loadFakeUsers(
-        yourNickname: _profile.nickname.isEmpty ? 'You' : _profile.nickname,
-        yourCity: _profile.city,
-        yourCountry: _profile.country,
-      ),
+    final users = await _leaderboardService.watchUsers(
       scope: _leaderboardScope,
       period: _leaderboardPeriod,
-      yourCountry: _profile.country,
-      yourCity: _profile.city,
-    );
+      yourCountry: _profile.country.isEmpty ? 'CZ' : _profile.country,
+      yourCity: _profile.city.isEmpty ? 'Prague' : _profile.city,
+    ).first;
+
+
 
     final youIndex = users.indexWhere((u) => u.isYou);
 
     _participantCount = users.length;
+
     _bestRankMinutes = users.isEmpty
         ? 0
         : _leaderboardService.minutesForPeriod(
@@ -189,6 +210,10 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
     } else {
       _yourRank = null;
       _yourRankMinutes = 0;
+    }
+
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -512,7 +537,9 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
   Widget _buildRankingPreviewCard({
     required bool isVerySmallPhone,
   }) {
-    if (_yourRank == null) {
+    final rankingOff = !_profile.showInRankings;
+
+    if (_yourRank == null && !rankingOff) {
       return const SizedBox.shrink();
     }
 
@@ -624,7 +651,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      statusText,
+                      rankingOff ? 'Show rankings is off' : statusText,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -676,7 +703,9 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              '$diffText\n$resetText',
+              rankingOff
+                  ? 'You are not visible in public rankings\n$resetText'
+                  : '$diffText\n$resetText',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -965,6 +994,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
                               currentMinutes: _stats.todayMinutes,
                               averageMinutes: dailyAverageMinutes,
                               chartValues: controller.dailyChartValues,
+                              sessions: controller.loadHistorySync(),
                             ),
                           ),
                         );
@@ -994,6 +1024,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
                               currentMinutes: _stats.weekMinutes,
                               averageMinutes: weeklyAverageMinutes,
                               chartValues: controller.weeklyChartValues,
+                              sessions: controller.loadHistorySync(),
                             ),
                           ),
                         );
@@ -1023,6 +1054,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
                               currentMinutes: _stats.monthMinutes,
                               averageMinutes: monthlyAverageMinutes,
                               chartValues: controller.monthlyChartValues,
+                              sessions: controller.loadHistorySync(),
                             ),
                           ),
                         );

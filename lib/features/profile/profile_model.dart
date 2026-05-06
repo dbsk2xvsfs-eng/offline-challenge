@@ -2,11 +2,13 @@ class ProfileModel {
   final String nickname;
   final String city;
   final String country;
+  final bool showInRankings;
 
   const ProfileModel({
     required this.nickname,
     required this.city,
     required this.country,
+    this.showInRankings = true,
   });
 
   ProfileModel copyWith({
