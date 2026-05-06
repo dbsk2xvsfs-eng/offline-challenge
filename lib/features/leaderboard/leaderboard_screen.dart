@@ -117,164 +117,199 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final originalMedia = MediaQuery.of(context);
+    final h = originalMedia.size.height;
+    final w = originalMedia.size.width;
+
+    final compact = h < 860;
+    final veryCompact = h < 780;
+
+    final pagePadding = w < 380 ? 10.0 : 12.0;
+    final gap = veryCompact ? 5.0 : 7.0;
+
     if (_loadingProfile) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Rankings'),
+
+    return MediaQuery(
+      data: originalMedia.copyWith(
+        textScaler: const TextScaler.linear(0.88),
       ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _chipSection(
-              children: LeaderboardScope.values.map((scope) {
-                return ChoiceChip(
-                  label: Text(scopeLabel(scope)),
-                  selected: selectedScope == scope,
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  onSelected: (_) {
-                    setState(() {
-                      selectedScope = scope;
-                    });
-                  },
-                );
-              }).toList(),
-            ),
-
-            const SizedBox(height: 10),
-
-            _chipSection(
-              children: LeaderboardPeriod.values.map((period) {
-                return ChoiceChip(
-                  label: Text(periodLabel(period)),
-                  selected: selectedPeriod == period,
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  onSelected: (_) {
-                    setState(() {
-                      selectedPeriod = period;
-                    });
-                  },
-                );
-              }).toList(),
-            ),
-
-            const SizedBox(height: 16),
-
-
-
-            const SizedBox(height: 14),
-
-            Text(
-              'Leaderboard',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            Expanded(
-              child: StreamBuilder<List<LeaderboardUserModel>>(
-                stream: service.watchUsers(
-                  scope: selectedScope,
-                  period: selectedPeriod,
-                  yourCountry: yourCountry,
-                  yourCity: yourCity,
-                ),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Text('Leaderboard error: ${snapshot.error}'),
-                    );
-                  }
-
-                  final rawUsers = snapshot.data ?? [];
-
-                  final users = (_profile?.showInRankings ?? true)
-                      ? rawUsers
-                      : rawUsers.where((u) => !u.isYou).toList();
-
-                  if (users.isEmpty) {
-                    return const Center(
-                      child: Text('Showing in rankings is off. For change go to profile.'),
-                    );
-                  }
-
-                  final youIndex = users.indexWhere((u) => u.isYou);
-                  final yourRank = youIndex >= 0 ? youIndex + 1 : null;
-
-                  final yourMinutes = youIndex >= 0
-                      ? service.minutesForPeriod(users[youIndex], selectedPeriod)
-                      : 0;
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (yourRank != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.emoji_events_outlined, size: 22),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Your rank: #$yourRank of ${users.length}',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                formatMinutes(yourMinutes),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                      Expanded(
-                        child: ListView.builder(
-                          itemCount: users.length,
-                          itemBuilder: (context, index) {
-                            final user = users[index];
-                            final rank = index + 1;
-                            final minutes = service.minutesForPeriod(
-                              user,
-                              selectedPeriod,
-                            );
-
-                            return _LeaderboardUserTile(
-                              rank: rank,
-                              name: user.nickname,
-                              location: '${user.city}, ${user.country}',
-                              time: formatMinutes(minutes),
-                              isYou: user.isYou,
-                            );
-                          },
-                        ),
+      child: Scaffold(
+        appBar: AppBar(
+          toolbarHeight: veryCompact ? 42 : 46,
+          title: const Text('Rankings'),
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(pagePadding, 4, pagePadding, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _chipSection(
+                  children: LeaderboardScope.values.map((scope) {
+                    return ChoiceChip(
+                      label: Text(
+                        scopeLabel(scope),
+                        style: const TextStyle(fontSize: 12),
                       ),
-                    ],
-                  );
-                },
-              ),
+                      selected: selectedScope == scope,
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      onSelected: (_) {
+                        setState(() {
+                          selectedScope = scope;
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+
+                SizedBox(height: gap),
+
+                _chipSection(
+                  children: LeaderboardPeriod.values.map((period) {
+                    return ChoiceChip(
+                      label: Text(
+                        periodLabel(period),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      selected: selectedPeriod == period,
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      onSelected: (_) {
+                        setState(() {
+                          selectedPeriod = period;
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+
+                SizedBox(height: veryCompact ? 8 : 10),
+
+                Text(
+                  'Leaderboard',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+
+                SizedBox(height: gap),
+
+                Expanded(
+                  child: StreamBuilder<List<LeaderboardUserModel>>(
+                    stream: service.watchUsers(
+                      scope: selectedScope,
+                      period: selectedPeriod,
+                      yourCountry: yourCountry,
+                      yourCity: yourCity,
+                    ),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Text('Leaderboard error: ${snapshot.error}'),
+                        );
+                      }
+
+                      final rawUsers = snapshot.data ?? [];
+
+                      final users = (_profile?.showInRankings ?? true)
+                          ? rawUsers
+                          : rawUsers.where((u) => !u.isYou).toList();
+
+                      if (users.isEmpty) {
+                        return const Center(
+                          child: Text(
+                            'Showing in rankings is off. For change go to profile.',
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      }
+
+                      final youIndex = users.indexWhere((u) => u.isYou);
+                      final yourRank = youIndex >= 0 ? youIndex + 1 : null;
+
+                      final yourMinutes = youIndex >= 0
+                          ? service.minutesForPeriod(
+                        users[youIndex],
+                        selectedPeriod,
+                      )
+                          : 0;
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (yourRank != null)
+                            Padding(
+                              padding: EdgeInsets.only(bottom: gap),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.emoji_events_outlined,
+                                    size: 19,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Your rank: #$yourRank of ${users.length}',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    formatMinutes(yourMinutes),
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                          Expanded(
+                            child: ListView.builder(
+                              padding: EdgeInsets.zero,
+                              itemCount: users.length,
+                              itemBuilder: (context, index) {
+                                final user = users[index];
+                                final rank = index + 1;
+                                final minutes = service.minutesForPeriod(
+                                  user,
+                                  selectedPeriod,
+                                );
+
+                                return _LeaderboardUserTile(
+                                  rank: rank,
+                                  name: user.nickname,
+                                  location: '${user.city}, ${user.country}',
+                                  time: formatMinutes(minutes),
+                                  isYou: user.isYou,
+                                  compact: compact,
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -302,6 +337,7 @@ class _LeaderboardUserTile extends StatelessWidget {
   final String location;
   final String time;
   final bool isYou;
+  final bool compact;
 
   const _LeaderboardUserTile({
     required this.rank,
@@ -309,6 +345,7 @@ class _LeaderboardUserTile extends StatelessWidget {
     required this.location,
     required this.time,
     required this.isYou,
+    required this.compact,
   });
 
   @override
@@ -318,37 +355,37 @@ class _LeaderboardUserTile extends StatelessWidget {
         : Colors.grey.shade100;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(
-        vertical: 12,
-        horizontal: 14,
+      margin: EdgeInsets.only(bottom: compact ? 6 : 8),
+      padding: EdgeInsets.symmetric(
+        vertical: compact ? 8 : 10,
+        horizontal: compact ? 10 : 12,
       ),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 5,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 24,
-            backgroundColor: rank <= 3
-                ? Colors.blue.shade100
-                : Colors.grey.shade200,
+            radius: compact ? 18 : 20,
+            backgroundColor:
+            rank <= 3 ? Colors.blue.shade100 : Colors.grey.shade200,
             child: Text(
               '$rank',
               style: const TextStyle(
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ),
-          const SizedBox(width: 14),
+          SizedBox(width: compact ? 9 : 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,28 +395,30 @@ class _LeaderboardUserTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: compact ? 13 : 14,
                     fontWeight: isYou ? FontWeight.w900 : FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   location,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
+                    fontSize: compact ? 11 : 12,
                     color: Colors.grey.shade700,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Text(
             time,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
+              fontSize: compact ? 12 : 13,
               fontWeight: FontWeight.bold,
             ),
           ),

@@ -539,9 +539,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
   }) {
     final rankingOff = !_profile.showInRankings;
 
-    if (_yourRank == null && !rankingOff) {
-      return const SizedBox.shrink();
-    }
+
 
     final isLeading = _yourRank == 1;
     final diffMinutes = _bestRankMinutes - _yourRankMinutes;
@@ -723,7 +721,8 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
   Widget _buildBestStatsCompactCard({
     required bool isVerySmallPhone,
   }) {
-    return Row(
+    return IntrinsicHeight(
+        child: Row(
       children: [
         Expanded(
           child: Container(
@@ -826,6 +825,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
           ),
         ),
       ],
+        ),
     );
   }
 
@@ -880,231 +880,259 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
     final session = controller.session;
     final currentMinutes = controller.currentElapsedMinutes;
 
-    final size = MediaQuery.of(context).size;
+    final originalMedia = MediaQuery.of(context);
+    final size = originalMedia.size;
     final width = size.width;
     final height = size.height;
 
-    final isSmallPhone = height < 760;
-    final isVerySmallPhone = height < 700;
+    final isSmallPhone = height < 860;
+    final isVerySmallPhone = height < 780;
 
-    final horizontalPadding = width < 380 ? 12.0 : 16.0;
-    final topSpacing = isVerySmallPhone ? 8.0 : 12.0;
-    final sectionSpacing = isVerySmallPhone ? 8.0 : 12.0;
+    final horizontalPadding = width < 380 ? 10.0 : 12.0;
+    final topSpacing = isVerySmallPhone ? 4.0 : 6.0;
+    final sectionSpacing = isVerySmallPhone ? 6.0 : 8.0;
 
-    final titleFont = isVerySmallPhone ? 18.0 : 20.0;
-    final timerFont = isVerySmallPhone ? 30.0 : (isSmallPhone ? 32.0 : 34.0);
-    final statTitleFont = isVerySmallPhone ? 11.0 : 12.0;
-    final statValueFont = isVerySmallPhone ? 13.0 : 14.0;
-    final buttonHeight = isVerySmallPhone ? 42.0 : 46.0;
+    final titleFont = isVerySmallPhone ? 16.0 : 18.0;
+    final timerFont = isVerySmallPhone ? 26.0 : 30.0;
+    final statTitleFont = isVerySmallPhone ? 10.0 : 11.0;
+    final statValueFont = isVerySmallPhone ? 12.0 : 13.0;
+    final buttonHeight = isVerySmallPhone ? 38.0 : 42.0;
 
     final dailyAverageMinutes = controller.dailyAverageUntilNowMinutes;
     final weeklyAverageMinutes = controller.weeklyAverageUntilNowMinutes;
     final monthlyAverageMinutes = controller.monthlyAverageUntilNowMinutes;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Offline Challenge'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _refreshAll,
-          ),
-
-
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const NotificationSettingsScreen(),
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.share_outlined),
-            onPressed: () {
-              final rankText = _yourRank != null
-                  ? '#$_yourRank in Prague this week'
-                  : 'tracking my offline time';
-
-              final timeText = formatMinutes(_yourRankMinutes);
-
-              final message =
-                  'I am $rankText with $timeText offline.\n\n'
-                  'Can you beat me? 🔥\n\n'
-                  'Join Offline Challenge.';
-
-              Share.share(message);
-            },
-          ),
-        ],
+    return MediaQuery(
+      data: originalMedia.copyWith(
+        textScaler: const TextScaler.linear(0.88),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            horizontalPadding,
-            topSpacing,
-            horizontalPadding,
-            12,
+      child: Scaffold(
+        appBar: AppBar(
+          toolbarHeight: isVerySmallPhone ? 44 : 48,
+          title: const Text(
+            'Offline Challenge',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          child: Column(
-            children: [
-              Text(
-                'Offline today',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: titleFont,
-                  fontWeight: FontWeight.bold,
+          titleTextStyle: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w500,
+            color: Colors.black,
+          ),
+          actions: [
+            IconButton(
+              iconSize: 22,
+              icon: const Icon(Icons.refresh),
+              onPressed: _refreshAll,
+            ),
+            IconButton(
+              iconSize: 22,
+              icon: const Icon(Icons.notifications_outlined),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationSettingsScreen(),
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              iconSize: 22,
+              icon: const Icon(Icons.share_outlined),
+              onPressed: () {
+                final rankText = _yourRank != null
+                    ? '#$_yourRank in Prague this week'
+                    : 'tracking my offline time';
+
+                final timeText = formatMinutes(_yourRankMinutes);
+
+                final message =
+                    'I am $rankText with $timeText offline.\n\n'
+                    'Can you beat me? 🔥\n\n'
+                    'Join Offline Challenge.';
+
+                Share.share(message);
+              },
+            ),
+          ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              topSpacing,
+              horizontalPadding,
+              6,
+            ),
+            child: Column(
+              children: [
+                Text(
+                  'Offline today',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: titleFont,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _trackingEnabled ? 'Tracking automatically' : 'Start tracking',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: isVerySmallPhone ? 11 : 12,
-                  color: Colors.grey.shade600,
+                const SizedBox(height: 2),
+                Text(
+                  _trackingEnabled
+                      ? 'Tracking automatically'
+                      : 'Start tracking',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: isVerySmallPhone ? 10 : 11,
+                    color: Colors.grey.shade600,
+                  ),
                 ),
-              ),
-              SizedBox(height: sectionSpacing),
-              Text(
-                formatMinutes(_stats.todayMinutes),
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: timerFont,
-                  fontWeight: FontWeight.bold,
+                SizedBox(height: sectionSpacing),
+                Text(
+                  formatMinutes(_stats.todayMinutes),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: timerFont,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              SizedBox(height: sectionSpacing),
-              Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => StatsDetailScreen(
-                              title: 'Daily offline time',
-                              currentLabel: 'Today',
-                              currentMinutes: _stats.todayMinutes,
-                              averageMinutes: dailyAverageMinutes,
-                              chartValues: controller.dailyChartValues,
-                              sessions: controller.loadHistorySync(),
+                SizedBox(height: sectionSpacing),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => StatsDetailScreen(
+                                title: 'Daily offline time',
+                                currentLabel: 'Today',
+                                currentMinutes: _stats.todayMinutes,
+                                averageMinutes: dailyAverageMinutes,
+                                chartValues: controller.dailyChartValues,
+                                sessions: controller.loadHistorySync(),
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      child: _buildStatCard(
-                        'Today',
-                        _stats.todayMinutes,
-                        dailyAverageMinutes,
-                        titleFont: statTitleFont,
-                        valueFont: statValueFont,
-                        isVerySmallPhone: isVerySmallPhone,
+                          );
+                        },
+                        child: _buildStatCard(
+                          'Today',
+                          _stats.todayMinutes,
+                          dailyAverageMinutes,
+                          titleFont: statTitleFont,
+                          valueFont: statValueFont,
+                          isVerySmallPhone: isVerySmallPhone,
+                        ),
                       ),
                     ),
-                  ),
-
-                  const SizedBox(width: 6),
-
-                  Expanded(
-                    child: InkWell(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => StatsDetailScreen(
-                              title: 'Weekly offline time',
-                              currentLabel: 'This week',
-                              currentMinutes: _stats.weekMinutes,
-                              averageMinutes: weeklyAverageMinutes,
-                              chartValues: controller.weeklyChartValues,
-                              sessions: controller.loadHistorySync(),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => StatsDetailScreen(
+                                title: 'Weekly offline time',
+                                currentLabel: 'This week',
+                                currentMinutes: _stats.weekMinutes,
+                                averageMinutes: weeklyAverageMinutes,
+                                chartValues: controller.weeklyChartValues,
+                                sessions: controller.loadHistorySync(),
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      child: _buildStatCard(
-                        'Week',
-                        _stats.weekMinutes,
-                        weeklyAverageMinutes,
-                        titleFont: statTitleFont,
-                        valueFont: statValueFont,
-                        isVerySmallPhone: isVerySmallPhone,
+                          );
+                        },
+                        child: _buildStatCard(
+                          'Week',
+                          _stats.weekMinutes,
+                          weeklyAverageMinutes,
+                          titleFont: statTitleFont,
+                          valueFont: statValueFont,
+                          isVerySmallPhone: isVerySmallPhone,
+                        ),
                       ),
                     ),
-                  ),
-
-                  const SizedBox(width: 6),
-
-                  Expanded(
-                    child: InkWell(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => StatsDetailScreen(
-                              title: 'Monthly offline time',
-                              currentLabel: 'This month',
-                              currentMinutes: _stats.monthMinutes,
-                              averageMinutes: monthlyAverageMinutes,
-                              chartValues: controller.monthlyChartValues,
-                              sessions: controller.loadHistorySync(),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => StatsDetailScreen(
+                                title: 'Monthly offline time',
+                                currentLabel: 'This month',
+                                currentMinutes: _stats.monthMinutes,
+                                averageMinutes: monthlyAverageMinutes,
+                                chartValues: controller.monthlyChartValues,
+                                sessions: controller.loadHistorySync(),
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      child: _buildStatCard(
-                        'Month',
-                        _stats.monthMinutes,
-                        monthlyAverageMinutes,
-                        titleFont: statTitleFont,
-                        valueFont: statValueFont,
-                        isVerySmallPhone: isVerySmallPhone,
+                          );
+                        },
+                        child: _buildStatCard(
+                          'Month',
+                          _stats.monthMinutes,
+                          monthlyAverageMinutes,
+                          titleFont: statTitleFont,
+                          valueFont: statValueFont,
+                          isVerySmallPhone: isVerySmallPhone,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              SizedBox(height: sectionSpacing),
-              _buildRankingPreviewCard(
-                isVerySmallPhone: isVerySmallPhone,
-              ),
-              SizedBox(height: sectionSpacing),
-              _buildBestStatsCompactCard(
-                isVerySmallPhone: isVerySmallPhone,
-              ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: Size.fromHeight(buttonHeight),
-                  ),
-                  onPressed: _trackingEnabled ? null : _startCollecting,
-                  child: Text(
-                    _trackingEnabled ? 'COLLECTING ENABLED' : 'START COLLECTING',
-                  ),
+                  ],
                 ),
-              ),
 
-              const SizedBox(height: 8),
-              Text(
-                _trackingEnabled
-                    ? 'Offline time will be collected automatically when your screen is off.'
-                    : 'Start once. Then the app will collect screen-off offline time automatically.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: isVerySmallPhone ? 11 : 12,
-                  color: Colors.grey.shade600,
+                SizedBox(height: sectionSpacing),
+
+                _buildRankingPreviewCard(
+                  isVerySmallPhone: true,
                 ),
-              ),
-            ],
+
+                SizedBox(height: sectionSpacing),
+
+                _buildBestStatsCompactCard(
+                  isVerySmallPhone: true,
+                ),
+
+                const Spacer(),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: Size.fromHeight(buttonHeight),
+                    ),
+                    onPressed: _trackingEnabled ? null : _startCollecting,
+                    child: Text(
+                      _trackingEnabled
+                          ? 'COLLECTING ENABLED'
+                          : 'START COLLECTING',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  _trackingEnabled
+                      ? 'Offline time is collected automatically when your screen is off.'
+                      : 'Start once. Then offline time is collected automatically.',
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

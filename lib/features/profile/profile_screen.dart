@@ -273,14 +273,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final h = MediaQuery.of(context).size.height;
-    final compact = h < 760;
+    final originalMedia = MediaQuery.of(context);
+    final h = originalMedia.size.height;
+    final w = originalMedia.size.width;
 
-    final pagePadding = compact ? 10.0 : 16.0;
-    final gap = compact ? 7.0 : 12.0;
-    final fieldFont = compact ? 16.0 : 18.0;
-    final tileTitleFont = compact ? 17.0 : 20.0;
-    final tileSubFont = compact ? 13.5 : 16.0;
+    final compact = h < 860;
+    final veryCompact = h < 780;
+
+    final pagePadding = w < 380 ? 10.0 : 12.0;
+    final gap = veryCompact ? 5.0 : 7.0;
+    final fieldFont = veryCompact ? 14.0 : 15.0;
+    final tileTitleFont = veryCompact ? 14.0 : 15.0;
+    final tileSubFont = veryCompact ? 11.0 : 12.0;
 
     InputDecoration fieldDecoration(String label) {
       return InputDecoration(
@@ -288,204 +292,242 @@ class _ProfileScreenState extends State<ProfileScreen> {
         border: const OutlineInputBorder(),
         isDense: true,
         contentPadding: EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: compact ? 9 : 13,
+          horizontal: 12,
+          vertical: veryCompact ? 7 : 9,
         ),
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        toolbarHeight: compact ? 44 : 56,
+    return MediaQuery(
+      data: originalMedia.copyWith(
+        textScaler: const TextScaler.linear(0.88),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-        padding: EdgeInsets.fromLTRB(
-          pagePadding,
-          compact ? 4 : 10,
-          pagePadding,
-          4,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Profile'),
+          toolbarHeight: veryCompact ? 42 : 46,
         ),
-        child: Column(
-          children: [
-            TextField(
-              controller: _nicknameController,
-              style: TextStyle(fontSize: fieldFont),
-              decoration: fieldDecoration('Nickname'),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              pagePadding,
+              veryCompact ? 2 : 5,
+              pagePadding,
+              4,
             ),
-            SizedBox(height: gap),
-
-            TextField(
-              controller: _cityController,
-              style: TextStyle(fontSize: fieldFont),
-              decoration: fieldDecoration('City'),
-            ),
-            SizedBox(height: gap),
-
-            TextField(
-              controller: _countryController,
-              readOnly: true,
-              onTap: _showCountryPicker,
-              style: TextStyle(fontSize: fieldFont),
-              decoration: fieldDecoration('Country').copyWith(
-                hintText: 'Select country',
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_countryController.text.trim().isNotEmpty)
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          setState(() {
-                            _countryController.clear();
-                          });
-                        },
-                      ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.public),
-                      onPressed: _showCountryPicker,
-                    ),
-                  ],
+            child: Column(
+              children: [
+                TextField(
+                  controller: _nicknameController,
+                  style: TextStyle(fontSize: fieldFont),
+                  decoration: fieldDecoration('Nickname'),
                 ),
-              ),
-            ),
+                SizedBox(height: gap),
 
-            SizedBox(height: compact ? 10 : 16),
-
-            SizedBox(
-              height: compact ? 40 : 46,
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _saving ? null : _saveProfile,
-                child: Text(
-                  _saving ? 'Saving...' : 'Save profile',
-                  style: TextStyle(
-                    fontSize: compact ? 15 : 17,
-                    fontWeight: FontWeight.w600,
-                  ),
+                TextField(
+                  controller: _cityController,
+                  style: TextStyle(fontSize: fieldFont),
+                  decoration: fieldDecoration('City'),
                 ),
-              ),
-            ),
+                SizedBox(height: gap),
 
-            SizedBox(height: compact ? 8 : 14),
-
-            SwitchListTile(
-              dense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-              title: Text(
-                'Show me in rankings',
-                style: TextStyle(fontSize: tileTitleFont),
-              ),
-              subtitle: Text(
-                _rankingToggleSaving
-                    ? 'Updating ranking visibility...'
-                    : 'Allow others to see your ranking',
-                style: TextStyle(fontSize: tileSubFont),
-              ),
-              value: _showInRankings,
-              onChanged: _rankingToggleSaving
-                  ? null
-                  : (value) {
-                _setShowInRankings(value);
-              },
-            ),
-
-            SizedBox(height: compact ? 4 : 8),
-
-            Card(
-              margin: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  SwitchListTile(
-                    dense: true,
-                    contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 10),
-                    title: Text(
-                      'Exclude sleep time from statistics',
-                      style: TextStyle(fontSize: tileTitleFont),
-                    ),
-                    subtitle: Text(
-                      'Sleep window will not count into statistics, goals and rankings',
-                      style: TextStyle(fontSize: tileSubFont),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    value: _excludeSleepTime,
-                    onChanged: (value) async {
-                      await _countingSettingsService
-                          .saveExcludeSleepTime(value);
-                      setState(() {
-                        _excludeSleepTime = value;
-                      });
-                    },
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    dense: true,
-                    visualDensity: VisualDensity.compact,
-                    enabled: _excludeSleepTime,
-                    leading: const Icon(Icons.bedtime, size: 20),
-                    title: Text(
-                      'Sleep window',
-                      style: TextStyle(fontSize: compact ? 15 : 17),
-                    ),
-                    subtitle: Text(
-                      '${_formatTimeOfDay(_sleepStart)} – ${_formatTimeOfDay(_sleepEnd)}',
-                      style: TextStyle(fontSize: compact ? 13 : 15),
-                    ),
-                  ),
-                  SizedBox(
-                    height: compact ? 34 : 40,
-                    child: Row(
+                TextField(
+                  controller: _countryController,
+                  readOnly: true,
+                  onTap: _showCountryPicker,
+                  style: TextStyle(fontSize: fieldFont),
+                  decoration: fieldDecoration('Country').copyWith(
+                    hintText: 'Select country',
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: TextButton(
-                            onPressed: _excludeSleepTime
-                                ? () => _pickSleepTime(isStart: true)
-                                : null,
-                            child: const Text('Start'),
+                        if (_countryController.text.trim().isNotEmpty)
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            iconSize: 19,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              setState(() {
+                                _countryController.clear();
+                              });
+                            },
                           ),
-                        ),
-                        Expanded(
-                          child: TextButton(
-                            onPressed: _excludeSleepTime
-                                ? () => _pickSleepTime(isStart: false)
-                                : null,
-                            child: const Text('End'),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          iconSize: 19,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
                           ),
+                          icon: const Icon(Icons.public),
+                          onPressed: _showCountryPicker,
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
+                ),
 
-            const Spacer(),
+                SizedBox(height: veryCompact ? 7 : 9),
 
-            ListTile(
-              dense: true,
-              visualDensity: VisualDensity.compact,
-              leading: const Icon(
-                Icons.delete_forever,
-                color: Colors.red,
-                size: 22,
-              ),
-              title: const Text(
-                'Reset statistics',
-                style: TextStyle(color: Colors.red, fontSize: 15),
-              ),
-              subtitle: const Text(
-                'Delete stats and stop collecting',
-                style: TextStyle(fontSize: 13),
-              ),
-              onTap: _confirmResetAllData,
+                SizedBox(
+                  height: veryCompact ? 35 : 38,
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _saveProfile,
+                    child: Text(
+                      _saving ? 'Saving...' : 'Save profile',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: veryCompact ? 5 : 7),
+
+                SwitchListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 6),
+                  title: Text(
+                    'Show me in rankings',
+                    style: TextStyle(fontSize: tileTitleFont),
+                  ),
+                  subtitle: Text(
+                    _rankingToggleSaving
+                        ? 'Updating ranking visibility...'
+                        : 'Allow others to see your ranking',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: tileSubFont),
+                  ),
+                  value: _showInRankings,
+                  onChanged: _rankingToggleSaving
+                      ? null
+                      : (value) {
+                    _setShowInRankings(value);
+                  },
+                ),
+
+                SizedBox(height: veryCompact ? 3 : 5),
+
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 8),
+                        title: Text(
+                          'Exclude sleep time',
+                          style: TextStyle(fontSize: tileTitleFont),
+                        ),
+                        subtitle: Text(
+                          'Sleep window will not count into stats, goals and rankings',
+                          style: TextStyle(fontSize: tileSubFont),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        value: _excludeSleepTime,
+                        onChanged: (value) async {
+                          await _countingSettingsService
+                              .saveExcludeSleepTime(value);
+                          setState(() {
+                            _excludeSleepTime = value;
+                          });
+                        },
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        enabled: _excludeSleepTime,
+                        leading: const Icon(Icons.bedtime, size: 18),
+                        title: Text(
+                          'Sleep window',
+                          style: TextStyle(
+                            fontSize: veryCompact ? 13 : 14,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${_formatTimeOfDay(_sleepStart)} – ${_formatTimeOfDay(_sleepEnd)}',
+                          style: TextStyle(
+                            fontSize: veryCompact ? 11 : 12,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: veryCompact ? 30 : 32,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextButton(
+                                onPressed: _excludeSleepTime
+                                    ? () => _pickSleepTime(isStart: true)
+                                    : null,
+                                child: const Text(
+                                  'Start',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: TextButton(
+                                onPressed: _excludeSleepTime
+                                    ? () => _pickSleepTime(isStart: false)
+                                    : null,
+                                child: const Text(
+                                  'End',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const Spacer(),
+
+                ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 4),
+                  leading: const Icon(
+                    Icons.delete_forever,
+                    color: Colors.red,
+                    size: 20,
+                  ),
+                  title: const Text(
+                    'Reset statistics',
+                    style: TextStyle(color: Colors.red, fontSize: 13),
+                  ),
+                  subtitle: const Text(
+                    'Delete stats and stop collecting',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  onTap: _confirmResetAllData,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

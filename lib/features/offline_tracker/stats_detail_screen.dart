@@ -32,12 +32,20 @@ class StatsDetailScreen extends StatelessWidget {
 
   String _bottomLabel(int index, int count) {
     if (count == 7) {
+      final today = DateTime.now();
+      final date = today.subtract(Duration(days: 6 - index));
+
       const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      return days[index];
+      return days[date.weekday - 1];
     }
 
-    if (count == 4) return 'W${index + 1}';
-    if (count == 6) return 'M${index + 1}';
+    if (count == 4) {
+      return 'W${index + 1}';
+    }
+
+    if (count == 6) {
+      return 'M${index + 1}';
+    }
 
     return '${index + 1}';
   }
@@ -99,205 +107,256 @@ class StatsDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final originalMedia = MediaQuery.of(context);
+    final h = originalMedia.size.height;
+    final w = originalMedia.size.width;
+
+    final veryCompact = h < 780;
+    final compact = h < 860;
+
     final values = chartValues.isEmpty ? List<int>.filled(7, 0) : chartValues;
     final maxMinutes = _maxForPeriod(values.length);
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(title),
+    final pagePadding = w < 380 ? 10.0 : 12.0;
+    final pieSize = veryCompact ? 210.0 : (compact ? 230.0 : 250.0);
+    final topCardHeight = veryCompact ? 82.0 : 92.0;
+    final legendFont = veryCompact ? 10.0 : 11.0;
+    final barPaddingTop = veryCompact ? 10.0 : 12.0;
+    final barWidth = veryCompact ? 34.0 : 38.0;
+
+    return MediaQuery(
+      data: originalMedia.copyWith(
+        textScaler: const TextScaler.linear(0.88),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _InfoCard(
-                      title: currentLabel,
-                      value: _formatMinutes(currentMinutes),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _InfoCard(
-                      title: 'Average',
-                      value: _formatMinutes(averageMinutes),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Progress',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-                const SizedBox(height: 6),
-              Row(
-                children: [
-                  _LegendDot(color: Colors.green, label: 'Offline'),
-                  const SizedBox(width: 12),
-                  _LegendDot(color: Colors.redAccent, label: 'Online'),
-                  const SizedBox(width: 12),
-                  _LegendDot(color: Colors.deepPurple, label: 'Sleep'),
-                  const SizedBox(width: 12),
-                  _LegendDot(color: Colors.blueGrey, label: 'Future'),
-                ],
-              ),
-
-              Center(
-                child: FutureBuilder<_SleepWindow>(
-                  future: _loadSleepWindow(),
-                  builder: (context, snapshot) {
-                    final sleep = snapshot.data ??
-                        const _SleepWindow(
-                          startMinute: 22 * 60,
-                          endMinute: 7 * 60,
-                        );
-
-                    final period = _periodForTitle(title);
-
-                    return SizedBox(
-                      width: 280,
-                      height: 280,
-                      child: _TimePieChart(
-                        sessions: sessions,
-                        periodStart: period.start,
-                        periodEnd: period.end,
-                        totalLabel: period.label,
-                        sleepStartMinute: sleep.startMinute,
-                        sleepEndMinute: sleep.endMinute,
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              const SizedBox(height: 16),
-
-              const SizedBox(height: 10),
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(12, 18, 12, 14),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
+      child: Scaffold(
+        appBar: AppBar(
+          toolbarHeight: veryCompact ? 42 : 46,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(pagePadding, 6, pagePadding, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: topCardHeight,
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: values.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final offline = entry.value.clamp(0, maxMinutes);
-                      final remaining = maxMinutes - offline;
+                    children: [
+                      Expanded(
+                        child: _InfoCard(
+                          title: currentLabel,
+                          value: _formatMinutes(currentMinutes),
+                          compact: compact,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _InfoCard(
+                          title: 'Average',
+                          value: _formatMinutes(averageMinutes),
+                          compact: compact,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
-                      final minVisibleOffline = (maxMinutes * 0.06).round();
+                SizedBox(height: veryCompact ? 8 : 10),
 
-                      final visibleOffline = offline <= 0
-                          ? 1
-                          : (offline < minVisibleOffline ? minVisibleOffline : offline);
+                Text(
+                  'Progress',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: veryCompact ? 19 : 21,
+                  ),
+                ),
 
-                      final visibleRemaining = (maxMinutes - visibleOffline).clamp(1, maxMinutes);
+                const SizedBox(height: 3),
 
-                      final offlineFlex = visibleOffline;
-                      final remainingFlex = visibleRemaining;
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 3,
+                  children: [
+                    _LegendDot(color: Colors.green, label: 'Offline'),
+                    _LegendDot(color: Colors.redAccent, label: 'Online'),
+                    _LegendDot(color: Colors.deepPurple, label: 'Sleep'),
+                    _LegendDot(color: Colors.blueGrey, label: 'Future'),
+                  ],
+                ),
 
-                      return Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Column(
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Column(
-                                    children: [
-                                      Expanded(
-                                        flex: remainingFlex,
-                                        child: Container(
-                                          width: 46,
-                                          color: Colors.red.withOpacity(0.55),
-                                          child: remaining > 0
-                                              ? Center(
-                                            child: RotatedBox(
-                                              quarterTurns: 3,
-                                              child: FittedBox(
-                                                fit: BoxFit.scaleDown,
-                                                child: Text(
-                                                  _formatMinutes(remaining),
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 12,
-                                                    fontWeight:
-                                                    FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          )
-                                              : null,
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: offlineFlex,
-                                        child: Container(
-                                          width: 46,
-                                          color: offline == 0
-                                              ? Colors.grey.shade300
-                                              : Colors.green,
-                                          child: offline > 0
-                                              ? Center(
-                                            child: RotatedBox(
-                                              quarterTurns: 3,
-                                              child: FittedBox(
-                                                fit: BoxFit.scaleDown,
-                                                child: Text(
-                                                  _formatMinutes(offline),
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 16,
-                                                    fontWeight:
-                                                    FontWeight.w900,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          )
-                                              : null,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _bottomLabel(index, values.length),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade700,
-                                ),
-                              ),
-                            ],
-                          ),
+                SizedBox(height: veryCompact ? 2 : 4),
+
+                Center(
+                  child: FutureBuilder<_SleepWindow>(
+                    future: _loadSleepWindow(),
+                    builder: (context, snapshot) {
+                      final sleep = snapshot.data ??
+                          const _SleepWindow(
+                            startMinute: 22 * 60,
+                            endMinute: 7 * 60,
+                          );
+
+                      final period = _periodForTitle(title);
+
+                      return SizedBox(
+                        width: pieSize,
+                        height: pieSize,
+                        child: _TimePieChart(
+                          sessions: sessions,
+                          periodStart: period.start,
+                          periodEnd: period.end,
+                          totalLabel: period.label,
+                          sleepStartMinute: sleep.startMinute,
+                          sleepEndMinute: sleep.endMinute,
                         ),
                       );
-                    }).toList(),
+                    },
                   ),
                 ),
-              ),
-            ],
+
+                SizedBox(height: veryCompact ? 6 : 8),
+
+                SizedBox(
+                  height: veryCompact ? 180 : 200,
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.fromLTRB(
+                      8,
+                      barPaddingTop,
+                      8,
+                      veryCompact ? 8 : 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: values.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final offline = entry.value.clamp(0, maxMinutes);
+                        final remaining = maxMinutes - offline;
+
+                        final minVisibleOffline = (maxMinutes * 0.06).round();
+
+                        final visibleOffline = offline <= 0
+                            ? 1
+                            : (offline < minVisibleOffline
+                            ? minVisibleOffline
+                            : offline);
+
+                        final visibleRemaining =
+                        (maxMinutes - visibleOffline).clamp(1, maxMinutes);
+
+                        final offlineFlex = visibleOffline;
+                        final remainingFlex = visibleRemaining;
+
+                        return Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: veryCompact ? 4 : 6,
+                            ),
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(9),
+                                    child: Column(
+                                      children: [
+                                        Expanded(
+                                          flex: remainingFlex,
+                                          child: Container(
+                                            width: barWidth,
+                                            color: Colors.red.withOpacity(0.55),
+                                            child: remaining > 0
+                                                ? Center(
+                                              child: RotatedBox(
+                                                quarterTurns: 3,
+                                                child: FittedBox(
+                                                  fit: BoxFit.scaleDown,
+                                                  child: Text(
+                                                    _formatMinutes(
+                                                      remaining,
+                                                    ),
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize:
+                                                      veryCompact
+                                                          ? 10
+                                                          : 11,
+                                                      fontWeight:
+                                                      FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                                : null,
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: offlineFlex,
+                                          child: Container(
+                                            width: barWidth,
+                                            color: offline == 0
+                                                ? Colors.grey.shade300
+                                                : Colors.green,
+                                            child: offline > 0
+                                                ? Center(
+                                              child: RotatedBox(
+                                                quarterTurns: 3,
+                                                child: FittedBox(
+                                                  fit: BoxFit.scaleDown,
+                                                  child: Text(
+                                                    _formatMinutes(offline),
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize:
+                                                      veryCompact
+                                                          ? 11
+                                                          : 12,
+                                                      fontWeight:
+                                                      FontWeight.w900,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                                : null,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  _bottomLabel(index, values.length),
+                                  style: TextStyle(
+                                    fontSize: veryCompact ? 10 : 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -308,34 +367,39 @@ class StatsDetailScreen extends StatelessWidget {
 class _InfoCard extends StatelessWidget {
   final String title;
   final String value;
+  final bool compact;
 
   const _InfoCard({
     required this.title,
     required this.value,
+    required this.compact,
   });
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      elevation: 1.5,
+      elevation: 1.2,
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: 18,
-          horizontal: 12,
+        padding: EdgeInsets.symmetric(
+          vertical: compact ? 8 : 10,
+          horizontal: 10,
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
               title,
-              style: const TextStyle(fontSize: 16),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: compact ? 13 : 14),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 5),
             FittedBox(
               child: Text(
                 value,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 30,
+                  fontSize: compact ? 24 : 27,
                 ),
               ),
             ),
@@ -470,6 +534,76 @@ class _PiePainter extends CustomPainter {
       );
     }
 
+    // Weekly / monthly = aggregate chart, not day-by-day slices
+    if (totalMinutes > 24 * 60) {
+      final totalDays = periodEnd.difference(periodStart).inDays;
+
+      int sleepMinutesPerDay;
+      if (sleepStartMinute > sleepEndMinute) {
+        sleepMinutesPerDay = (24 * 60 - sleepStartMinute) + sleepEndMinute;
+      } else {
+        sleepMinutesPerDay = sleepEndMinute - sleepStartMinute;
+      }
+
+      final sleepTotal = sleepMinutesPerDay * totalDays;
+
+      final currentEnd = now.isBefore(periodEnd) ? now : periodEnd;
+      final elapsedTotal = currentEnd.difference(periodStart).inMinutes.clamp(
+        0,
+        totalMinutes,
+      );
+
+      int offlineTotal = 0;
+
+      for (final s in sessions) {
+        final start = s.startedAt;
+        final end = start.add(Duration(minutes: s.durationMinutes));
+
+        final clippedStart = start.isBefore(periodStart) ? periodStart : start;
+        final clippedEnd = end.isAfter(periodEnd) ? periodEnd : end;
+
+        if (clippedEnd.isAfter(clippedStart)) {
+          offlineTotal += clippedEnd.difference(clippedStart).inMinutes;
+        }
+      }
+
+      offlineTotal = offlineTotal.clamp(0, totalMinutes - sleepTotal);
+
+      final sleepElapsed = ((elapsedTotal / totalMinutes) * sleepTotal).round();
+
+      int onlineTotal = elapsedTotal - sleepElapsed - offlineTotal;
+      if (onlineTotal < 0) onlineTotal = 0;
+
+      int futureTotal = totalMinutes - sleepTotal - offlineTotal - onlineTotal;
+      if (futureTotal < 0) futureTotal = 0;
+
+      double startAngle = -_pi / 2;
+
+      void drawPart(int minutes, Paint p) {
+        if (minutes <= 0) return;
+
+        final sweep = sweepForMinutes(minutes);
+
+        canvas.drawArc(
+          rect,
+          startAngle,
+          sweep,
+          false,
+          p,
+        );
+
+        startAngle += sweep;
+      }
+
+      drawPart(sleepTotal, sleepPaint);
+      drawPart(futureTotal, futurePaint);
+      drawPart(onlineTotal, onlinePaint);
+      drawPart(offlineTotal, offlinePaint);
+
+      _drawCenterText(canvas, center);
+      return;
+    }
+
     // základ = budoucnost
     drawRange(periodStart, periodEnd, futurePaint);
 
@@ -501,7 +635,7 @@ class _PiePainter extends CustomPainter {
     }
 
     _drawCenterText(canvas, center);
-    _drawSleepLabels(canvas, center, radius, totalMinutes);
+
   }
 
   void _drawCenterText(Canvas canvas, Offset center) {
@@ -537,73 +671,6 @@ class _PiePainter extends CustomPainter {
     sub.paint(
       canvas,
       Offset(center.dx - sub.width / 2, center.dy - sub.height / 2 + 20),
-    );
-  }
-
-  void _drawSleepLabels(
-      Canvas canvas,
-      Offset center,
-      double radius,
-      int totalMinutes,
-      ) {
-    if (totalMinutes > 24 * 60) return;
-
-    _drawLabel(
-      canvas,
-      center,
-      radius,
-      sleepEndMinute,
-      '${_formatClock(sleepEndMinute)}\nWake up',
-      color: Colors.deepPurple,
-    );
-
-    _drawLabel(
-      canvas,
-      center,
-      radius,
-      sleepStartMinute,
-      '${_formatClock(sleepStartMinute)}\nSleep start',
-      color: Colors.deepPurple,
-    );
-  }
-
-  String _formatClock(int minute) {
-    final h = (minute ~/ 60).toString().padLeft(2, '0');
-    final m = (minute % 60).toString().padLeft(2, '0');
-    return '$h:$m';
-  }
-
-  void _drawLabel(
-      Canvas canvas,
-      Offset center,
-      double radius,
-      int minute,
-      String text, {
-        Color color = Colors.black87,
-      }) {
-    final angle = -_pi / 2 + (minute / (24 * 60)) * 2 * _pi;
-    final labelRadius = radius + 48;
-
-    final x = center.dx + labelRadius * math.sin(angle);
-    final y = center.dy - labelRadius * math.cos(angle);
-
-    final painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          height: 1.15,
-        ),
-      ),
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: 80);
-
-    painter.paint(
-      canvas,
-      Offset(x - painter.width / 2, y - painter.height / 2),
     );
   }
 
