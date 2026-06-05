@@ -23,6 +23,7 @@ import '../notifications/local_notification_service.dart';
 import 'stats_detail_screen.dart';
 
 import 'daily_goal_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class OfflineHomeScreen extends StatefulWidget {
   const OfflineHomeScreen({super.key});
@@ -79,6 +80,44 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
     bestStreakDays: 0,
     dailyGoalMinutes: 120,
   );
+
+  int _myMinutesForSelectedPeriod() {
+    switch (_leaderboardPeriod) {
+      case LeaderboardPeriod.day:
+        return _stats.todayMinutes;
+      case LeaderboardPeriod.week:
+        return _stats.weekMinutes;
+      case LeaderboardPeriod.month:
+        return _stats.monthMinutes;
+      case LeaderboardPeriod.all:
+        return _stats.monthMinutes;
+    }
+  }
+
+  Future<void> _saveRankingFilter() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('home_ranking_scope', _leaderboardScope.index);
+    await prefs.setInt('home_ranking_period', _leaderboardPeriod.index);
+  }
+
+  Future<void> _loadRankingFilter() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final scopeIndex = prefs.getInt('home_ranking_scope');
+    final periodIndex = prefs.getInt('home_ranking_period');
+
+    if (scopeIndex != null &&
+        scopeIndex >= 0 &&
+        scopeIndex < LeaderboardScope.values.length) {
+      _leaderboardScope = LeaderboardScope.values[scopeIndex];
+    }
+
+    if (periodIndex != null &&
+        periodIndex >= 0 &&
+        periodIndex < LeaderboardPeriod.values.length) {
+      _leaderboardPeriod = LeaderboardPeriod.values[periodIndex];
+    }
+  }
 
   Future<void> _refreshProfile() async {
     final profile = await _profileService.loadProfile();
@@ -188,29 +227,37 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
       yourCity: _profile.city.isEmpty ? 'Prague' : _profile.city,
     ).first;
 
+    final myMinutes = _myMinutesForSelectedPeriod();
 
+    final publicUsersWithoutMe = users.where((u) => !u.isYou).toList();
 
-    final youIndex = users.indexWhere((u) => u.isYou);
-
-    _participantCount = users.length;
-
-    _bestRankMinutes = users.isEmpty
-        ? 0
-        : _leaderboardService.minutesForPeriod(
-      users.first,
-      _leaderboardPeriod,
-    );
-
-    if (youIndex >= 0) {
-      _yourRank = youIndex + 1;
-      _yourRankMinutes = _leaderboardService.minutesForPeriod(
-        users[youIndex],
+    final betterUsers = publicUsersWithoutMe.where((u) {
+      final minutes = _leaderboardService.minutesForPeriod(
+        u,
         _leaderboardPeriod,
       );
-    } else {
-      _yourRank = null;
-      _yourRankMinutes = 0;
+
+      return minutes >= myMinutes;
+    }).length;
+
+    _yourRank = betterUsers + 1;
+    _participantCount = publicUsersWithoutMe.length + 1;
+    if (myMinutes == 0) {
+      _yourRank = _participantCount;
     }
+    _yourRankMinutes = myMinutes;
+
+    _bestRankMinutes = publicUsersWithoutMe.isEmpty
+        ? myMinutes
+        : [
+      myMinutes,
+      ...publicUsersWithoutMe.map(
+            (u) => _leaderboardService.minutesForPeriod(
+          u,
+          _leaderboardPeriod,
+        ),
+      ),
+    ].reduce((a, b) => a > b ? a : b);
 
     if (mounted) {
       setState(() {});
@@ -283,6 +330,8 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
       _leaderboardScope = selected;
     });
 
+    await _saveRankingFilter();
+
     await _refreshRankingPreview();
 
     if (mounted) setState(() {});
@@ -326,6 +375,8 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
     setState(() {
       _leaderboardPeriod = selected;
     });
+
+    await _saveRankingFilter();
 
     await _refreshRankingPreview();
 
@@ -408,6 +459,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen>
 
   Future<void> _init() async {
     await controller.init();
+    await _loadRankingFilter();
 
     _trackingEnabled = await _trackingSettingsService.isTrackingEnabled();
 

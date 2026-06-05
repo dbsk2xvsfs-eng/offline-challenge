@@ -7,6 +7,27 @@ import 'leaderboard_user_model.dart';
 class LeaderboardService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  String normalizeCity(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll('á', 'a')
+        .replaceAll('č', 'c')
+        .replaceAll('ď', 'd')
+        .replaceAll('é', 'e')
+        .replaceAll('ě', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ň', 'n')
+        .replaceAll('ó', 'o')
+        .replaceAll('ř', 'r')
+        .replaceAll('š', 's')
+        .replaceAll('ť', 't')
+        .replaceAll('ú', 'u')
+        .replaceAll('ů', 'u')
+        .replaceAll('ý', 'y')
+        .replaceAll('ž', 'z');
+  }
+
   Future<String> getOrCreateUserId() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -30,7 +51,8 @@ class LeaderboardService {
     await _db.collection('leaderboard').doc(userId).set({
       'nickname': nickname.trim().isEmpty ? 'Anonymous' : nickname.trim(),
       'country': country.trim().isEmpty ? 'UN' : country.trim().toUpperCase(),
-      'city': city.trim().isEmpty ? 'unknown' : city.trim().toLowerCase(),
+      'city': city.trim().isEmpty ? 'unknown' : normalizeCity(city),
+      'cityDisplay': city.trim().isEmpty ? 'unknown' : city.trim(),
     }, SetOptions(merge: true));
   }
 
@@ -75,6 +97,20 @@ class LeaderboardService {
     Query betterQuery = _db.collection('leaderboard');
     Query totalQuery = _db.collection('leaderboard');
 
+    final activeSince = Timestamp.fromDate(
+      DateTime.now().subtract(const Duration(days: 7)),
+    );
+
+    betterQuery = betterQuery.where(
+      'lastStatsSyncAt',
+      isGreaterThan: activeSince,
+    );
+
+    totalQuery = totalQuery.where(
+      'lastStatsSyncAt',
+      isGreaterThan: activeSince,
+    );
+
     switch (scope) {
       case LeaderboardScope.global:
         break;
@@ -85,8 +121,8 @@ class LeaderboardService {
         break;
 
       case LeaderboardScope.city:
-        betterQuery = betterQuery.where('city', isEqualTo: yourCity);
-        totalQuery = totalQuery.where('city', isEqualTo: yourCity);
+        betterQuery = betterQuery.where('city', isEqualTo: normalizeCity(yourCity));
+        totalQuery = totalQuery.where('city', isEqualTo: normalizeCity(yourCity));
         break;
 
       case LeaderboardScope.friends:
@@ -124,7 +160,8 @@ class LeaderboardService {
     await _db.collection('leaderboard').doc(userId).set({
       'nickname': nickname,
       'country': country,
-      'city': city.trim().toLowerCase(),
+      'city': city.trim().isEmpty ? 'unknown' : normalizeCity(city),
+      'cityDisplay': city.trim().isEmpty ? 'unknown' : city.trim(),
       'dayMinutes': dayMinutes,
       'weekMinutes': weekMinutes,
       'monthMinutes': monthMinutes,
@@ -159,6 +196,15 @@ class LeaderboardService {
 
     Query query = _db.collection('leaderboard');
 
+    final activeSince = Timestamp.fromDate(
+      DateTime.now().subtract(const Duration(days: 7)),
+    );
+
+    query = query.where(
+      'lastStatsSyncAt',
+      isGreaterThan: activeSince,
+    );
+
     // 🔥 FIRESTORE FILTRY
     switch (scope) {
       case LeaderboardScope.global:
@@ -169,7 +215,7 @@ class LeaderboardService {
         break;
 
       case LeaderboardScope.city:
-        query = query.where('city', isEqualTo: yourCity);
+        query = query.where('city', isEqualTo: normalizeCity(yourCity));
         break;
 
       case LeaderboardScope.friends:
@@ -231,7 +277,7 @@ class LeaderboardService {
         result = result.where((u) => u.country == yourCountry).toList();
         break;
       case LeaderboardScope.city:
-        result = result.where((u) => u.city == yourCity).toList();
+        result = result.where((u) => u.city == normalizeCity(yourCity)).toList();
         break;
       case LeaderboardScope.friends:
         result = result.where((u) => u.isYou).toList();

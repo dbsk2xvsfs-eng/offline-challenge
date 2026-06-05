@@ -20,6 +20,9 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 
 class ScreenTrackingService : Service() {
 
@@ -38,6 +41,16 @@ class ScreenTrackingService : Service() {
             handler.postDelayed(this, 60_000)
         }
     }
+
+    private lateinit var firestore: FirebaseFirestore
+    private val leaderboardSyncIntervalMs = 15 * 60 * 1000L
+
+    private val leaderboardSyncer = object : Runnable {
+        override fun run() {
+            syncLeaderboardFromService()
+            handler.postDelayed(this, leaderboardSyncIntervalMs)
+        }
+    }   
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -58,6 +71,9 @@ class ScreenTrackingService : Service() {
         prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
 
         createNotificationChannel()
+
+        firestore = FirebaseFirestore.getInstance()
+        handler.post(leaderboardSyncer)
 
         startForeground(
             notificationId,
@@ -80,6 +96,8 @@ class ScreenTrackingService : Service() {
         }
 
         handler.removeCallbacks(notificationChecker)
+
+        handler.removeCallbacks(leaderboardSyncer)
 
         super.onDestroy()
     }
@@ -157,6 +175,162 @@ class ScreenTrackingService : Service() {
             saveSession(startOfNextDay.toInstant().toString(), secondPart)
         }
     }
+
+    private fun syncLeaderboardFromService() {
+        try {
+            android.util.Log.d("LEADERBOARD_SYNC", "SYNC STARTED")
+
+            val userId = prefs.getString("flutter.leaderboard_user_id", null)
+            android.util.Log.d("LEADERBOARD_SYNC", "USER ID = $userId")
+            if (userId == null) return
+
+            val rawProfile = prefs.getString("flutter.user_profile", null) ?: return
+            val profile = JSONObject(rawProfile)
+
+            val showInRankings = profile.optBoolean("showInRankings", true)
+            if (!showInRankings) return
+
+            val nickname = profile.optString("nickname", "Anonymous")
+            val country = profile.optString("country", "UN")
+            val cityRaw = profile.optString("city", "unknown")
+
+            val data = hashMapOf<String, Any>(
+                "nickname" to if (nickname.trim().isEmpty()) "Anonymous" else nickname.trim(),
+                "country" to if (country.trim().isEmpty()) "UN" else country.trim().uppercase(),
+                "city" to normalizeCity(cityRaw),
+                "cityDisplay" to if (cityRaw.trim().isEmpty()) "unknown" else cityRaw.trim(),
+
+                "dayMinutes" to totalMinutesForTodayIncludingCurrent(),
+                "weekMinutes" to totalMinutesForCurrentWeekIncludingCurrent(),
+                "monthMinutes" to totalMinutesForCurrentMonthIncludingCurrent(),
+                "allMinutes" to totalMinutesAllIncludingCurrent(),
+
+                "lastStatsSyncAt" to Timestamp.now(),
+                "updatedAt" to Timestamp.now(),
+                "syncSource" to "android_service"
+            )
+
+            firestore.collection("leaderboard")
+                .document(userId)
+                .set(data, SetOptions.merge())
+                .addOnSuccessListener {
+                    android.util.Log.d("LEADERBOARD_SYNC", "UPLOAD OK")
+                }
+                .addOnFailureListener { e ->
+                    android.util.Log.e("LEADERBOARD_SYNC", "UPLOAD FAIL", e)
+                }
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun currentRunningSessionMinutes(): Pair<Instant, Int>? {
+        val rawStart = prefs.getString("flutter.screen_off_started_at", null) ?: return null
+
+        val startedAt = try {
+            Instant.parse(rawStart)
+        } catch (_: Exception) {
+            return null
+        }
+
+        val minutes = java.time.Duration.between(startedAt, Instant.now()).toMinutes().toInt()
+        if (minutes < 1) return null
+
+        return Pair(startedAt, minutes)
+    }
+
+    private fun totalMinutesAllIncludingCurrent(): Int {
+        var total = totalMinutesAll()
+        val running = currentRunningSessionMinutes()
+        if (running != null) total += running.second
+        return total
+    }
+
+    private fun totalMinutesForTodayIncludingCurrent(): Int {
+        var total = totalMinutesForToday()
+        val running = currentRunningSessionMinutes()
+
+        if (running != null) {
+            val date = running.first.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+            if (date == LocalDate.now()) {
+                total += running.second
+            }
+        }
+
+        return total
+    }
+
+    private fun totalMinutesForCurrentWeekIncludingCurrent(): Int {
+        var total = totalMinutesForCurrentWeek()
+        val running = currentRunningSessionMinutes()
+
+        if (running != null) {
+            val date = running.first.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+            val today = LocalDate.now()
+            val weekStart = today.minusDays((today.dayOfWeek.value - 1).toLong())
+
+            if (!date.isBefore(weekStart)) {
+                total += running.second
+            }
+        }
+
+        return total
+    }
+
+    private fun totalMinutesForCurrentMonthIncludingCurrent(): Int {
+        var total = totalMinutesForCurrentMonth()
+        val running = currentRunningSessionMinutes()
+
+        if (running != null) {
+            val date = running.first.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+            val today = LocalDate.now()
+            val monthStart = LocalDate.of(today.year, today.month, 1)
+
+            if (!date.isBefore(monthStart)) {
+                total += running.second
+            }
+        }
+
+        return total
+    }
+
+    private fun totalMinutesAll(): Int {
+        val sessions = loadNativeSessions()
+        var total = 0
+
+        for (i in 0 until sessions.length()) {
+            val item = sessions.getJSONObject(i)
+            total += item.optInt("durationMinutes", 0)
+        }
+
+        return total
+    }
+
+    private fun normalizeCity(value: String): String {
+        return value
+            .trim()
+            .lowercase()
+            .replace("á", "a")
+            .replace("č", "c")
+            .replace("ď", "d")
+            .replace("é", "e")
+            .replace("ě", "e")
+            .replace("í", "i")
+            .replace("ň", "n")
+            .replace("ó", "o")
+            .replace("ř", "r")
+            .replace("š", "s")
+            .replace("ť", "t")
+            .replace("ú", "u")
+            .replace("ů", "u")
+            .replace("ý", "y")
+            .replace("ž", "z")
+    }
+
+
+
+
 
     private fun saveSession(startedAtIso: String, durationMinutes: Int) {
         try {
